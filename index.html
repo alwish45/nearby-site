@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>near.by — Local deals, happy hours &amp; events in Utah</title>
+<title>near.by — What's happening near you</title>
 <meta name="description" content="near.by shows happy hours, food specials, live music and events happening near you along the Wasatch Front and in Park City, Utah.">
 <style>
   :root { --bg:#faf8f4; --ink:#14110d; --muted:#6b655b; --accent:#e8542a; --line:#ece8e0; }
@@ -23,29 +23,45 @@
   footer { border-top:1px solid var(--line); margin-top:44px; padding-top:18px; color:var(--muted); font-size:15px; }
   footer a { color:var(--muted); margin-right:14px; }
   a { color:var(--accent); }
+  .compare { border:1px solid var(--line); border-radius:16px; overflow:hidden; background:#fff; margin:6px 0 4px; }
+  .compare .row { display:grid; grid-template-columns:1fr 1fr; }
+  .compare .row span { padding:12px 14px; border-top:1px solid var(--line); font-size:16px; }
+  .compare .row span:last-child { background:#eef7f0; font-weight:600; }
+  .compare .row.head span { border-top:none; font-size:13px; font-weight:800; letter-spacing:.6px; text-transform:uppercase; color:var(--muted); background:#f4f1ea; }
+  .compare .row.head span:last-child { color:var(--accent); background:#fdeee9; }
 </style>
 </head>
 <body>
 <main>
   <div class="logo">near<span>.</span>by</div>
   <h1>What's happening near you, right now.</h1>
-  <p class="lead">near.by is a free iPhone app that shows live happy hours, food specials, live music, trivia, games, shows and events along the Wasatch Front and in Park City, Utah, sorted by what's on now and how close it is.</p>
+  <p class="lead">near.by shows you the happy hours, specials, live music, trivia, games, shows and events going on around you, live and sorted by what's on now and how close it is. From Ogden to Spanish Fork, Tooele, Park City and Heber.</p>
   <a class="cta" href="https://apps.apple.com/us/app/id6812937568">Get the app</a>
 
-  <h2>For people</h2>
+  <h2>Find something good to do nearby</h2>
   <div class="grid">
-    <div class="card"><b>● Happening now</b>Deals that are live this minute, nearest first.</div>
-    <div class="card"><b>📅 Plan ahead</b>Concerts, games, shows and weekly specials on a calendar.</div>
-    <div class="card"><b>🗺️ Map</b>Browse any neighborhood from Ogden to Spanish Fork.</div>
+    <div class="card"><b>● Happening now</b>Deals that are live this minute, nearest first, then what's starting soon.</div>
+    <div class="card"><b>📅 Plan ahead</b>Concerts, games, theater and weekly specials on one calendar.</div>
+    <div class="card"><b>♥ Never miss it</b>Save a deal and get a reminder before it starts.</div>
   </div>
-  <p>Free to use. No account needed to browse.</p>
+  <p>Free to use. No account, no coupons, nothing to redeem: see it and walk in.</p>
 
-  <h2>For businesses</h2>
-  <p>Listing your business and posting deals is free. Businesses can also <strong>pin a deal</strong> to the top of the feed for people near them, priced at <strong>$10 per mile of area per day</strong> (founding businesses: $5), with a free first week. Payments are processed securely by Stripe.</p>
+  <h2>Local deals, done right</h2>
+  <p>Daily-deal apps proved people love local deals, then asked businesses to discount deeply, hand over about half of what customers paid, and wait on prepaid vouchers from one-time bargain hunters. near.by works the other way around.</p>
+  <div class="compare">
+    <div class="row head"><span>Voucher deal apps</span><span>near.by</span></div>
+    <div class="row"><span>Deep discounts, with the platform taking a big cut</span><span>Businesses promote the specials they already run, at full price</span></div>
+    <div class="row"><span>Prepaid vouchers to buy and redeem</span><span>Nothing to buy. See it, go</span></div>
+    <div class="row"><span>One-time bargain hunters</span><span>Neighbors deciding where to go tonight, who come back</span></div>
+    <div class="row"><span>Random daily emails</span><span>Live and nearby, when you're actually deciding</span></div>
+  </div>
+
+  <h2>For businesses: get found tonight, keep your margin</h2>
+  <p>Your listing and your deals are free. To stand out, <strong>pin a deal</strong> to the top of the feed for people near you, from <strong>$10 a day</strong> for a 1-mile area (founding businesses: $5). Your first pinned week is free, there are no contracts, and every customer pays full price. You'll see how many people saw it, tapped it and got directions.</p>
   <a class="cta alt" href="for-business.html">Pricing &amp; how it works</a>
 
-  <h2>Earn as a rep</h2>
-  <p>Independent reps earn a share of what the local businesses they bring on pay for promotions. Free to join.</p>
+  <h2>For the community: earn by helping local spots get found</h2>
+  <p>Know the bars, restaurants and venues in your neighborhood? Sign them up and earn half of what they spend on promotions, for two years. Free to join, no quotas. Earnings vary and depend entirely on what your businesses choose to spend.</p>
   <a class="cta alt" href="reps.html">Become a rep</a>
 
   <footer>
