@@ -79,7 +79,9 @@ function render() {
   if (!poll) { app.innerHTML = '<h1>Vote not found</h1><p class="sub">The link may be incomplete. Ask your friend to send it again.</p>'; return; }
   const total = poll.counts.reduce((a, b) => a + b, 0);
   const top = total ? Math.max(...poll.counts) : 0;
-  const win = total ? poll.counts.indexOf(top) : -1;
+  // A tie has no leader yet: no trophy and no directions until someone breaks it.
+  const lead = total ? poll.counts.map((n, i) => (n === top ? i : -1)).filter(i => i >= 0) : [];
+  const win = lead.length === 1 ? lead[0] : -1;
   const voted = poll.my_vote !== null && poll.my_vote !== undefined;
   const savedName = (() => { try { return localStorage.getItem('nearby.name') || ''; } catch { return ''; } })();
   app.innerHTML = `
@@ -93,7 +95,7 @@ function render() {
       const img = /^https:\/\//.test(o.image_url || '') ? `<img class="thumb" src="${esc(o.image_url)}" alt="" loading="lazy" onerror="this.remove()">` : '';
       const deal = o.price_info && !/^\s*tickets\s*$/i.test(o.price_info) ? `<span class="deal">${esc(o.price_info)}</span>` : '';
       return `<button class="opt ${poll.my_vote === i ? 'mine' : ''}" data-i="${i}" ${poll.closed ? 'disabled' : ''}>
-        <span class="bar ${i === win ? 'win' : ''}" style="width:${pct}%"></span>
+        <span class="bar ${total && n === top ? 'win' : ''}" style="width:${pct}%"></span>
         <span class="row">${img}<span class="grow">
           <div class="t">${i === win ? '🏆 ' : ''}${esc(o.title)}</div>
           <div class="m">${esc([o.business, o.city, when].filter(Boolean).join(' · '))}</div>
@@ -102,6 +104,7 @@ function render() {
         </span><span class="n">${n}${poll.my_vote === i ? ' ✓' : ''}</span></span>
       </button>`;
     }).join('')}
+    ${lead.length > 1 && !poll.closed ? '<p class="sub" style="text-align:center;color:#9a3412;font-weight:700">It’s a tie. One more vote settles it.</p>' : ''}
     ${win >= 0 ? `<div class="down">
       <h2>${(poll.down || []).length ? `🙌 ${poll.down.length} ${poll.down.length === 1 ? 'person is' : 'people are'} down` : 'Who’s down?'}</h2>
       <div class="m">${(poll.down || []).length ? esc(poll.down.join(', ')) : `Tap if you’re in for ${esc(poll.options[win].business || 'the winner')}.`}</div>
