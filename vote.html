@@ -38,6 +38,15 @@
   .thumb { width:56px; height:56px; border-radius:12px; object-fit:cover; flex:none; background:var(--line); }
   .more { color:var(--muted); font-size:13px; margin:-4px 2px 12px; line-height:1.4; }
   .more a { color:#c2410c; font-weight:700; text-decoration:none; white-space:nowrap; }
+  .box { background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:14px; margin:0 0 10px; }
+  .box h2 { font-size:13px; letter-spacing:.6px; text-transform:uppercase; color:var(--muted); margin:0 0 8px; }
+  .how { display:flex; gap:8px; }
+  .how button { flex:1; font:inherit; font-weight:700; font-size:14px; background:#fff; border:1.5px solid var(--line); border-radius:12px; padding:10px 4px; cursor:pointer; color:inherit; }
+  .how button.on { background:var(--ink); color:#faf8f4; border-color:var(--ink); }
+  .how b { display:block; font-size:18px; }
+  .suggest { display:block; width:100%; font:inherit; font-weight:800; color:#c2410c; background:none; border:1.5px dashed var(--accent); border-radius:14px; padding:13px; margin:0 0 10px; cursor:pointer; }
+  .pick { display:flex; align-items:center; gap:10px; width:100%; text-align:left; font:inherit; color:inherit; background:#fff; border:1px dashed var(--line); border-radius:12px; padding:10px 12px; margin:0 0 8px; cursor:pointer; }
+  .pick .plus { color:var(--accent); font-weight:800; font-size:22px; }
   .deal { display:inline-block; margin-top:6px; font-size:13px; font-weight:800; color:#9a3412; background:var(--soft); border-radius:999px; padding:3px 10px; }
 </style>
 </head>
@@ -135,10 +144,13 @@ function render() {
           <div class="t">${i === win ? '🏆 ' : ''}${esc(o.title)}</div>
           <div class="m">${esc([o.business, o.city, when].filter(Boolean).join(' · '))}</div>
           ${deal}
+          ${o.added_by ? `<div class="who">Suggested by ${esc(o.added_by)}</div>` : ''}
           ${names ? `<div class="who">${names}</div>` : ''}
         </span>${invite ? '' : `<span class="n">${n}${mine.includes(i) ? ' ✓' : ''}</span>`}</span>
       </button>${more(o)}`;
     }).join('')}
+    ${poll.can_add ? `<button class="suggest" id="suggest">${adding ? 'Done' : '＋ Suggest another place'}</button>${adding ? picksHtml() : ''}` : ''}
+    ${poll.how && !invite ? `<div class="box"><h2>How should we do it?</h2><div class="how">${[['dine_in', '🍽️ Dine in'], ['pickup', '🛍️ Pickup'], ['delivery', '🚗 Delivery']].map(([k, l]) => `<button data-how="${k}" class="${poll.my_how === k ? 'on' : ''}">${l}<b>${poll.how[k] || 0}</b></button>`).join('')}</div><div class="who">A head count for the group. Check with the place that it offers pickup or delivery.</div></div>` : ''}
     ${lead.length > 1 && !poll.closed ? '<p class="sub" style="text-align:center;color:#9a3412;font-weight:700">It’s a tie. One more vote settles it.</p>' : ''}
     ${go >= 0 ? `<div class="down">
       <h2>${(poll.down || []).length ? `🙌 ${poll.down.length} ${poll.down.length === 1 ? 'person is' : 'people are'} down` : 'Who’s down?'}</h2>
@@ -149,6 +161,40 @@ function render() {
     <a class="cta" style="background:#fff;color:#14110d;border:1.5px solid #ece8e0" href="nearby://vote?p=${code}">Open in the near.by app</a>`;
   app.querySelectorAll('.opt').forEach(b => b.addEventListener('click', () => vote(Number(b.dataset.i))));
   document.getElementById('downbtn')?.addEventListener('click', () => setDown(!poll.i_am_down));
+  document.getElementById('suggest')?.addEventListener('click', () => { adding = !adding; if (adding) loadNearby(); render(); });
+  app.querySelectorAll('[data-how]').forEach(b => b.addEventListener('click', () => setHow(b.dataset.how)));
+  app.querySelectorAll('.pick').forEach(b => b.addEventListener('click', () => addOption(b.dataset.id)));
+}
+
+// Suggest another place: what's on today near the first option.
+let adding = false, nearby = null;
+async function loadNearby() {
+  if (nearby || !poll) return;
+  const at = poll.options.find(o => o.lat);
+  if (!at) { nearby = []; return; }
+  try { nearby = await rpc('deals_near_v3', { in_lat: at.lat, in_lng: at.lng, in_radius_m: 8000 }); } catch { nearby = []; }
+  render();
+}
+function picksHtml() {
+  if (!nearby) return '<p class="sub">Loading what’s on nearby…</p>';
+  const have = new Set(poll.options.map(o => o.deal_id)), seen = new Set();
+  const list = nearby.filter(d => !have.has(d.deal_id) && !seen.has(d.business_name) && seen.add(d.business_name)).slice(0, 10);
+  if (!list.length) return '<p class="sub">Nothing else on nearby right now. In the near.by app you can search any area.</p>';
+  return list.map(d => `<button class="pick" data-id="${esc(d.deal_id)}"><span class="grow"><div class="t">${esc(d.title)}</div><div class="m">${esc([d.business_name, d.start_time ? t12(d.start_time) : '', d.price_info, d.price_level].filter(Boolean).join(' · '))}</div></span><span class="plus">＋</span></button>`).join('');
+}
+function myName() {
+  const el = document.getElementById('name');
+  let n = el ? el.value.trim() : '';
+  try { if (n) localStorage.setItem('nearby.name', n); else n = localStorage.getItem('nearby.name') || ''; } catch {}
+  return n || null;
+}
+async function addOption(id) {
+  try { poll = await rpc('add_poll_option', { p_code: code, p_voter_key: me, p_deal_id: id, p_name: myName() }); adding = false; info = null; render(); loadInfo(); }
+  catch (e) { alert(/full/.test(e.message) ? 'This vote already has 6 options.' : "Couldn't add that. Try again."); }
+}
+async function setHow(how) {
+  try { poll = await rpc('set_how', { p_code: code, p_voter_key: me, p_how: how }); render(); }
+  catch { alert("Couldn't save that. Try again."); }
 }
 
 async function vote(i) {
