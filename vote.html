@@ -175,10 +175,32 @@ async function loadNearby() {
   try { nearby = await rpc('deals_near_v3', { in_lat: at.lat, in_lng: at.lng, in_radius_m: 8000 }); } catch { nearby = []; }
   render();
 }
+// The same rules as the app's vote list: only somewhere the group could go
+// today. No gyms, massage or spas, no rewards programs, no catering, holiday
+// feasts or order-ahead meals, and nothing that has already ended.
+const HEALTH_KINDS = ['personal training', 'gym', 'fitness', 'yoga', 'pilates', 'crossfit', 'climbing gym', 'massage', 'spa', 'day spa', 'med spa', 'medical spa', 'wellness', 'chiropractor', 'chiropractic', 'acupuncture', 'physical therapy', 'float spa', 'cryotherapy', 'facial spa', 'skin care'];
+const HEALTH_TEXT = /\b(gym|workout|work out|fitness|personal train|crossfit|pilates|yoga|barre|bootcamp|boot camp|hotworx|stretchlab|orangetheory|f45|spin class|cycling studio|massages?|spa|day spa|med ?spa|facials?|wellness|chiropract\w*|acupuncture|reflexology|cryotherapy|float tank|infrared sauna|iv therapy|botox|massage envy|hand ?& ?stone|elements massage)\b/i;
+const CATERING_TEXT = /thanksgiving|chefsgiving|catering|caterer|holiday (dinner|meal|feast|buffet)|christmas (eve |day )?(dinner|brunch|buffet|feast)|new year'?s (eve |day )?(dinner|brunch|buffet)|easter (brunch|dinner|buffet)|pre-?order|to[- ]?go|take[- ]?away|take[- ]?out|turkey dinner|feast (to go|package)|family meal pack|party (trays?|platters?)|\b(pies?|desserts?) (order|pre)/i;
+const CATERING_DESC = /catering|caterer|party trays?|meals? to-?go|order your (thanksgiving|holiday)/i;
+const mins = t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + (m || 0); };
+function goodPick(d) {
+  const tags = (d.category_tags || []).map(t => String(t).toLowerCase());
+  if (tags.includes('loyalty') || tags.includes('catering')) return false;
+  if (HEALTH_KINDS.includes((d.category || '').toLowerCase()) || tags.some(t => HEALTH_KINDS.includes(t))) return false;
+  if (HEALTH_TEXT.test(`${d.title || ''} ${d.business_name || ''}`)) return false;
+  if (CATERING_TEXT.test(d.title || '') || CATERING_DESC.test(d.description || '')) return false;
+  // Already over for today. An end time at or before the start (10pm to 1am) runs past midnight, so it isn't over.
+  if (d.end_time) {
+    const now = new Date(), end = mins(d.end_time), start = d.start_time ? mins(d.start_time) : null;
+    const pastMidnight = start != null ? end <= start : end < 300;
+    if (!pastMidnight && now.getHours() * 60 + now.getMinutes() > end) return false;
+  }
+  return true;
+}
 function picksHtml() {
   if (!nearby) return '<p class="sub">Loading what’s on nearby…</p>';
   const have = new Set(poll.options.map(o => o.deal_id)), seen = new Set();
-  const list = nearby.filter(d => !have.has(d.deal_id) && !seen.has(d.business_name) && seen.add(d.business_name)).slice(0, 10);
+  const list = nearby.filter(d => !have.has(d.deal_id) && goodPick(d) && !seen.has(d.business_name) && seen.add(d.business_name)).slice(0, 10);
   if (!list.length) return '<p class="sub">Nothing else on nearby right now. In the near.by app you can search any area.</p>';
   return list.map(d => `<button class="pick" data-id="${esc(d.deal_id)}"><span class="grow"><div class="t">${esc(d.title)}</div><div class="m">${esc([d.business_name, d.start_time ? t12(d.start_time) : '', d.price_info, d.price_level].filter(Boolean).join(' · '))}</div></span><span class="plus">＋</span></button>`).join('');
 }
