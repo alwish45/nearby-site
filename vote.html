@@ -18,7 +18,7 @@
   input { width:100%; font:inherit; padding:13px 14px; border:1.5px solid var(--line); border-radius:12px; background:#fff; margin-bottom:12px; }
   .opt { position:relative; display:block; width:100%; text-align:left; font:inherit; color:inherit; background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:14px; margin:0 0 10px; overflow:hidden; cursor:pointer; }
   .opt.mine { border-color:var(--ink); }
-  .opt:disabled { cursor:default; }
+  .opt:disabled { cursor:default; opacity:1; color:inherit; }
   .bar { position:absolute; inset:0 auto 0 0; background:var(--soft); transition:width .4s; }
   .bar.win { background:var(--win); }
   .row { position:relative; display:flex; align-items:center; gap:12px; }
@@ -36,6 +36,8 @@
   .downbtn { display:block; width:100%; margin-top:10px; font:inherit; font-weight:800; font-size:16px; border-radius:12px; padding:13px; border:1.5px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; }
   .downbtn.on { background:#fff; color:#c2410c; }
   .thumb { width:56px; height:56px; border-radius:12px; object-fit:cover; flex:none; background:var(--line); }
+  .more { color:var(--muted); font-size:13px; margin:-4px 2px 12px; line-height:1.4; }
+  .more a { color:#c2410c; font-weight:700; text-decoration:none; white-space:nowrap; }
   .deal { display:inline-block; margin-top:6px; font-size:13px; font-weight:800; color:#9a3412; background:var(--soft); border-radius:999px; padding:3px 10px; }
 </style>
 </head>
@@ -75,6 +77,29 @@ async function rpc(fn, body) {
 }
 
 let poll = null;
+// What kind of place each option is, its address and a line about it, read
+// once from the public deals list (the vote itself only stores the basics).
+let info = null;
+async function loadInfo() {
+  if (info || !poll || !poll.options) return;
+  info = {};
+  try {
+    const ids = poll.options.map(o => o.deal_id).filter(Boolean).join(',');
+    const r = await fetch(`${API.replace('rpc/', '')}deals?id=in.(${ids})&select=id,description,businesses(category,address,city)`, { headers: { apikey: KEY } });
+    for (const d of (r.ok ? await r.json() : [])) info[d.id] = d;
+    render();
+  } catch {}
+}
+const cap = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
+function more(o) {
+  const d = (info && info[o.deal_id]) || {}, b = d.businesses || {};
+  const street = /\d/.test(b.address || '') ? b.address.split(',')[0] : '';
+  const where = [cap(b.category), street || o.city].filter(Boolean).join(' · ');
+  const about = d.description ? esc(d.description.length > 150 ? d.description.slice(0, 147).trimEnd() + '…' : d.description) : '';
+  const map = o.lat ? `<a href="https://maps.google.com/?q=${encodeURIComponent(o.business || '')}&ll=${o.lat},${o.lng}" target="_blank" rel="noopener">Map ›</a>` : '';
+  if (!where && !about && !map) return '';
+  return `<div class="more">${where ? '📍 ' + esc(where) : ''}${where && map ? ' · ' : ''}${map}${about ? `<br>${about}` : ''}</div>`;
+}
 function render() {
   if (!poll) { app.innerHTML = '<h1>Vote not found</h1><p class="sub">The link may be incomplete. Ask your friend to send it again.</p>'; return; }
   const total = poll.counts.reduce((a, b) => a + b, 0);
@@ -82,35 +107,45 @@ function render() {
   // A tie has no leader yet: no trophy and no directions until someone breaks it.
   const lead = total ? poll.counts.map((n, i) => (n === top ? i : -1)).filter(i => i >= 0) : [];
   const win = lead.length === 1 ? lead[0] : -1;
-  const voted = poll.my_vote !== null && poll.my_vote !== undefined;
+  // Newer database: several picks each (my_votes), people counted once
+  // (voter_count). Older: one pick each (my_vote).
+  const multi = Array.isArray(poll.my_votes);
+  const mine = multi ? poll.my_votes : (poll.my_vote !== null && poll.my_vote !== undefined ? [poll.my_vote] : []);
+  const voted = mine.length > 0;
+  const people = poll.voter_count ?? total;
+  // One option is an invite: nothing to vote on, just "I'm down".
+  const invite = poll.options.length === 1;
+  const go = invite ? 0 : win;
   const savedName = (() => { try { return localStorage.getItem('nearby.name') || ''; } catch { return ''; } })();
   app.innerHTML = `
-    <h1>${esc(poll.title || 'Where should we go?')}</h1>
-    <p class="sub">${poll.closed ? 'This vote has closed.' : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${total ? `· ${total} vote${total === 1 ? '' : 's'}` : ''}</p>
-    ${!voted && !poll.closed ? `<input id="name" maxlength="30" placeholder="Your name (so friends know who voted)" value="${esc(savedName)}">` : ''}
+    <h1>${esc(poll.title || (invite ? 'Who’s in?' : 'Where should we go?'))}</h1>
+    <p class="sub">${invite
+      ? (poll.closed ? 'This invite has closed.' : 'Tap “I’m down” if you’re in. No app needed.')
+      : `${poll.closed ? 'This vote has closed.' : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
+    ${(invite ? !poll.i_am_down : !voted) && !poll.closed ? `<input id="name" maxlength="30" placeholder="Your name (so friends know who${invite ? '’s in' : ' voted'})" value="${esc(savedName)}">` : ''}
     ${poll.options.map((o, i) => {
-      const n = poll.counts[i] || 0, pct = total ? Math.round(n / total * 100) : 0;
+      const n = poll.counts[i] || 0, pct = people ? Math.min(100, Math.round(n / people * 100)) : 0;
       const names = poll.voters.filter(v => v.option === i).map(v => esc(v.name)).join(', ');
       const when = [o.valid_from ? day(o.valid_from) : '', o.start_time ? t12(o.start_time) : ''].filter(Boolean).join(' ');
       const img = /^https:\/\//.test(o.image_url || '') ? `<img class="thumb" src="${esc(o.image_url)}" alt="" loading="lazy" onerror="this.remove()">` : '';
       const deal = o.price_info && !/^\s*tickets\s*$/i.test(o.price_info) ? `<span class="deal">${esc(o.price_info)}</span>` : '';
-      return `<button class="opt ${poll.my_vote === i ? 'mine' : ''}" data-i="${i}" ${poll.closed ? 'disabled' : ''}>
+      return `<button class="opt ${mine.includes(i) ? 'mine' : ''}" data-i="${i}" ${poll.closed || invite ? 'disabled' : ''}>
         <span class="bar ${total && n === top ? 'win' : ''}" style="width:${pct}%"></span>
         <span class="row">${img}<span class="grow">
           <div class="t">${i === win ? '🏆 ' : ''}${esc(o.title)}</div>
           <div class="m">${esc([o.business, o.city, when].filter(Boolean).join(' · '))}</div>
           ${deal}
           ${names ? `<div class="who">${names}</div>` : ''}
-        </span><span class="n">${n}${poll.my_vote === i ? ' ✓' : ''}</span></span>
-      </button>`;
+        </span>${invite ? '' : `<span class="n">${n}${mine.includes(i) ? ' ✓' : ''}</span>`}</span>
+      </button>${more(o)}`;
     }).join('')}
     ${lead.length > 1 && !poll.closed ? '<p class="sub" style="text-align:center;color:#9a3412;font-weight:700">It’s a tie. One more vote settles it.</p>' : ''}
-    ${win >= 0 ? `<div class="down">
+    ${go >= 0 ? `<div class="down">
       <h2>${(poll.down || []).length ? `🙌 ${poll.down.length} ${poll.down.length === 1 ? 'person is' : 'people are'} down` : 'Who’s down?'}</h2>
-      <div class="m">${(poll.down || []).length ? esc(poll.down.join(', ')) : `Tap if you’re in for ${esc(poll.options[win].business || 'the winner')}.`}</div>
+      <div class="m">${(poll.down || []).length ? esc(poll.down.join(', ')) : `Tap if you’re in for ${esc(poll.options[go].business || 'the winner')}.`}</div>
       <button class="downbtn ${poll.i_am_down ? 'on' : ''}" id="downbtn">${poll.i_am_down ? '✓ You’re down (tap to undo)' : 'I’m down 🙌'}</button>
     </div>` : ''}
-    ${win >= 0 && poll.options[win].lat ? `<a class="cta" href="https://maps.google.com/?daddr=${poll.options[win].lat},${poll.options[win].lng}">Directions to the leader: ${esc(poll.options[win].business)}</a>` : ''}
+    ${go >= 0 && poll.options[go].lat ? `<a class="cta" href="https://maps.google.com/?daddr=${poll.options[go].lat},${poll.options[go].lng}">Directions to ${invite ? '' : 'the leader: '}${esc(poll.options[go].business)}</a>` : ''}
     <a class="cta" style="background:#fff;color:#14110d;border:1.5px solid #ece8e0" href="nearby://vote?p=${code}">Open in the near.by app</a>`;
   app.querySelectorAll('.opt').forEach(b => b.addEventListener('click', () => vote(Number(b.dataset.i))));
   document.getElementById('downbtn')?.addEventListener('click', () => setDown(!poll.i_am_down));
@@ -120,7 +155,13 @@ async function vote(i) {
   const nameEl = document.getElementById('name');
   const name = nameEl ? nameEl.value.trim() : null;
   try { if (name) localStorage.setItem('nearby.name', name); } catch {}
-  try { poll = await rpc('cast_vote', { p_code: code, p_voter_key: me, p_option: i, p_name: name || null }); render(); }
+  const args = { p_code: code, p_voter_key: me, p_option: i, p_name: name || null };
+  try {
+    // toggle_vote: tap to add a pick, tap again to take it back. Older database: one choice each.
+    try { poll = await rpc('toggle_vote', args); }
+    catch (e) { if (!/could not find the function/i.test(e.message)) throw e; poll = await rpc('cast_vote', args); }
+    render();
+  }
   catch (e) { alert(/closed/.test(e.message) ? 'This vote has closed.' : "Couldn't save your vote. Try again."); }
 }
 
@@ -136,6 +177,7 @@ async function load() {
   if (!code) { render(); return; }
   try { poll = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { poll = null; }
   if (!document.getElementById('name') || !document.activeElement || document.activeElement.id !== 'name') render();
+  loadInfo();
 }
 load();
 setInterval(load, 10000);
