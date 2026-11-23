@@ -151,6 +151,7 @@ function render() {
     }).join('')}
     ${poll.can_add ? `<button class="suggest" id="suggest">${adding ? 'Done' : '＋ Suggest another place'}</button>${adding ? picksHtml() : ''}` : ''}
     ${poll.how && !invite ? `<div class="box"><h2>How should we do it?</h2><div class="how">${[['dine_in', '🍽️ Dine in'], ['pickup', '🛍️ Pickup'], ['delivery', '🚗 Delivery']].map(([k, l]) => `<button data-how="${k}" class="${poll.my_how === k ? 'on' : ''}">${l}<b>${poll.how[k] || 0}</b></button>`).join('')}</div><div class="who">A head count for the group. Check with the place that it offers pickup or delivery.</div></div>` : ''}
+    ${whenHtml()}
     ${lead.length > 1 && !poll.closed ? '<p class="sub" style="text-align:center;color:#9a3412;font-weight:700">It’s a tie. One more vote settles it.</p>' : ''}
     ${go >= 0 ? `<div class="down">
       <h2>${(poll.down || []).length ? `🙌 ${poll.down.length} ${poll.down.length === 1 ? 'person is' : 'people are'} down` : 'Who’s down?'}</h2>
@@ -164,6 +165,70 @@ function render() {
   document.getElementById('suggest')?.addEventListener('click', () => { adding = !adding; if (adding) loadNearby(); render(); });
   app.querySelectorAll('[data-how]').forEach(b => b.addEventListener('click', () => setHow(b.dataset.how)));
   app.querySelectorAll('.pick').forEach(b => b.addEventListener('click', () => addOption(b.dataset.id)));
+  app.querySelectorAll('[data-time]').forEach(b => b.addEventListener('click', () => toggleTime(Number(b.dataset.time))));
+  document.getElementById('addtime')?.addEventListener('click', () => { addingTime = !addingTime; render(); });
+  document.getElementById('savetime')?.addEventListener('click', addTime);
+}
+
+// When works? Friends tap every day and time they can make, or suggest another.
+// Same get_poll fields the app uses: times, time_counts, time_voters, my_times.
+let addingTime = false;
+const pad = n => String(n).padStart(2, '0');
+const isoDay = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+// The plan the vote started with: the first option's day and start time.
+function planned() {
+  const o = (poll.options || []).find(x => x.start_time) || {};
+  return o.start_time ? { day: o.valid_from || isoDay(new Date()), time: String(o.start_time).slice(0, 5) } : null;
+}
+function whenHtml() {
+  if (!Array.isArray(poll.times)) return ''; // older database without time voting
+  const times = poll.times, counts = poll.time_counts || [], mineT = poll.my_times || [];
+  const plan = planned();
+  if (!times.length && poll.closed) return '';
+  const topT = Math.max(0, ...counts);
+  const people = poll.time_people || 0;
+  const rows = times.map((s, i) => {
+    const n = counts[i] || 0, pct = people ? Math.min(100, Math.round(n / people * 100)) : 0;
+    const names = (poll.time_voters || []).filter(v => v.time === i).map(v => esc(v.name)).join(', ');
+    return `<button class="opt ${mineT.includes(i) ? 'mine' : ''}" data-time="${i}" ${poll.closed ? 'disabled' : ''}>
+      <span class="bar ${n && n === topT ? 'win' : ''}" style="width:${pct}%"></span>
+      <span class="row"><span class="grow">
+        <div class="t">🕒 ${esc(day(s.day))} · ${esc(t12(s.time))}</div>
+        ${s.planned ? '<div class="who">The original plan</div>' : ''}
+        ${s.added_by ? `<div class="who">Suggested by ${esc(s.added_by)}</div>` : ''}
+        ${names ? `<div class="who">${names}</div>` : ''}
+      </span><span class="n">${n}${mineT.includes(i) ? ' ✓' : ''}</span></span>
+    </button>`;
+  }).join('');
+  const intro = times.length
+    ? (poll.closed ? '' : 'Tap every time you can make.')
+    : plan ? `The plan is ${esc(day(plan.day))} at ${esc(t12(plan.time))}. Can’t make it? Suggest another time.` : 'No time picked yet. Suggest one.';
+  const today = isoDay(new Date()), last = isoDay(new Date(Date.now() + 60 * 864e5));
+  const form = addingTime ? `<div class="how" style="margin-top:8px">
+      <input id="tday" type="date" min="${today}" max="${last}" value="${esc(plan ? (plan.day < today ? today : plan.day) : today)}" style="margin:0">
+      <input id="ttime" type="time" step="900" value="${esc(plan ? plan.time : '19:00')}" style="margin:0">
+    </div><button class="downbtn" id="savetime">Add this time</button>` : '';
+  return `<div class="box"><h2>When works?</h2>
+    ${intro ? `<p class="m" style="margin:0 0 10px">${intro}</p>` : ''}
+    ${rows}
+    ${poll.can_add_time ? `<button class="suggest" id="addtime" style="margin:0">${addingTime ? 'Cancel' : '＋ Suggest another time'}</button>${form}` : ''}
+  </div>`;
+}
+async function toggleTime(i) {
+  try { poll = await rpc('toggle_time', { p_code: code, p_voter_key: me, p_index: i, p_name: myName() }); render(); }
+  catch (e) { alert(/closed/.test(e.message) ? 'This vote has closed.' : "Couldn't save that. Try again."); }
+}
+async function addTime() {
+  const d = document.getElementById('tday').value, t = document.getElementById('ttime').value;
+  if (!d || !t) { alert('Pick a day and a time.'); return; }
+  const plan = planned();
+  try {
+    poll = await rpc('add_poll_time', { p_code: code, p_voter_key: me, p_day: d, p_time: t, p_name: myName(),
+      p_planned_day: plan ? plan.day : null, p_planned_time: plan ? plan.time : null });
+    addingTime = false; render();
+  } catch (e) {
+    alert(/6 times/.test(e.message) ? 'This vote already has 6 times.' : /two months/.test(e.message) ? 'Pick a day in the next two months.' : "Couldn't add that time. Try again.");
+  }
 }
 
 // Suggest another place: what's on today near the first option.
@@ -244,7 +309,8 @@ async function setDown(on) {
 async function load() {
   if (!code) { render(); return; }
   try { poll = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { poll = null; }
-  if (!document.getElementById('name') || !document.activeElement || document.activeElement.id !== 'name') render();
+  // Don't redraw under someone typing their name or picking a time.
+  if (!addingTime && (!document.getElementById('name') || !document.activeElement || document.activeElement.id !== 'name')) render();
   loadInfo();
 }
 load();
