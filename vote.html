@@ -49,7 +49,17 @@
   .how b { display:block; font-size:18px; }
   .suggest { display:block; width:100%; font:inherit; font-weight:800; color:#c2410c; background:none; border:1.5px dashed var(--accent); border-radius:14px; padding:13px; margin:0 0 10px; cursor:pointer; }
   .pick { display:flex; align-items:center; gap:10px; width:100%; text-align:left; font:inherit; color:inherit; background:#fff; border:1px dashed var(--line); border-radius:12px; padding:10px 12px; margin:0 0 8px; cursor:pointer; }
-  .pick .plus { color:var(--accent); font-weight:800; font-size:22px; }
+  .pick { align-items:flex-start; border-style:solid; }
+  .pick .plus { color:var(--accent); font-weight:800; font-size:14px; white-space:nowrap; align-self:center; }
+  .pick .about { color:#2b2722; font-size:13px; line-height:1.35; margin-top:3px; }
+  .thumb.icon { display:flex; align-items:center; justify-content:center; font-size:26px; background:var(--soft); }
+  #find { display:block; width:100%; box-sizing:border-box; font:inherit; font-size:16px; border:1.5px solid var(--line); border-radius:12px; padding:11px 12px; margin:0 0 8px; background:#fff; }
+  .chips { display:flex; gap:6px; overflow-x:auto; padding:0 0 8px; margin:0 0 2px; scrollbar-width:none; }
+  .chips::-webkit-scrollbar { display:none; }
+  .chip { flex:none; font:inherit; font-size:13px; font-weight:700; background:#fff; color:inherit; border:1.5px solid var(--line); border-radius:999px; padding:6px 11px; cursor:pointer; }
+  .chip.on { background:var(--ink); color:#faf8f4; border-color:var(--ink); }
+  .chip .c { color:var(--muted); font-weight:600; }
+  .chip.on .c { color:#d6d0c6; }
   .deal { display:inline-block; margin-top:6px; font-size:13px; font-weight:800; color:#9a3412; background:var(--soft); border-radius:999px; padding:3px 10px; }
 </style>
 </head>
@@ -174,7 +184,11 @@ function render() {
   document.getElementById('downbtn')?.addEventListener('click', () => setDown(!poll.i_am_down));
   document.getElementById('suggest')?.addEventListener('click', () => { adding = !adding; if (adding) loadNearby(); render(); });
   app.querySelectorAll('[data-how]').forEach(b => b.addEventListener('click', () => setHow(b.dataset.how)));
-  app.querySelectorAll('.pick').forEach(b => b.addEventListener('click', () => addOption(b.dataset.id)));
+  bindFeed();
+  const find = document.getElementById('find');
+  if (find) {
+    find.addEventListener('input', () => { feed.q = find.value; feed.shown = FEED_STEP; redrawFeed(); });
+  }
   app.querySelectorAll('[data-time]').forEach(b => b.addEventListener('click', () => toggleTime(Number(b.dataset.time))));
   document.getElementById('addtime')?.addEventListener('click', () => { addingTime = !addingTime; render(); });
   document.getElementById('savetime')?.addEventListener('click', addTime);
@@ -326,12 +340,109 @@ function goodPick(d) {
   }
   return true;
 }
+// Suggest another place: a feed you can narrow, like the app's picker.
+// Search, what kind, how far (from the vote's first place) and what time.
+const PICK_CATS = [['', 'All', '⭐'], ['happy hour', 'Happy hour', '🍻'], ['drinks', 'Drinks', '🍸'], ['food', 'Food', '🍽️'], ['brunch', 'Brunch', '🌅'],
+  ['music', 'Live music', '🎵'], ['sports', 'Sports', '🏈'], ['trivia', 'Trivia', '🎯'], ['comedy', 'Comedy', '😂'], ['theater', 'Theater', '🎭'],
+  ['pizza', 'Pizza', '🍕'], ['taco', 'Tacos', '🌮'], ['sushi', 'Sushi', '🍱'], ['burger', 'Burgers', '🍔'], ['family', 'Family', '🎈'], ['free', 'Free', '🆓']];
+// The same kinds the app matches by place type or title, not only tags.
+const FOOD_KIND = { pizza: [/pizza|\bslices?\b/i, ['pizza']], taco: [/tacos?\b|burrito|enchilada|nachos|quesadilla/i, ['mexican']], sushi: [/sushi|sashimi|\bpoke\b|\brolls?\b/i, ['sushi']], burger: [/burger/i, []] };
+const MILES = [[0, 'Any distance'], [1, 'Under 1 mi'], [3, 'Under 3 mi'], [5, 'Under 5 mi']];
+const SLOTS = [['', 'Any time'], ['morning', 'Morning'], ['lunch', 'Lunch'], ['afternoon', 'Afternoon'], ['evening', 'Evening'], ['late', 'Late night']];
+const SLOT_RANGE = { morning: [300, 660], lunch: [660, 840], afternoon: [840, 1020], evening: [1020, 1260], late: [1260, 1560] };
+const FEED_STEP = 12;
+const feed = { q: '', cat: '', mi: 0, slot: '', shown: FEED_STEP };
+const tagsOf = d => (d.category_tags || []).map(t => String(t).toLowerCase());
+function catOk(d, key) {
+  if (!key) return true;
+  if (tagsOf(d).some(t => t.includes(key))) return true;
+  const k = FOOD_KIND[key];
+  return !!k && (k[1].includes(String(d.category || '').toLowerCase()) || k[0].test(d.title || ''));
+}
+// Runs at some point in the slot. No start time means all day (or until its end).
+function slotOk(d, slot) {
+  if (!slot) return true;
+  const [a, b] = SLOT_RANGE[slot];
+  if (!d.start_time) return !d.end_time || mins(d.end_time) > a || mins(d.end_time) < 300;
+  const start = mins(d.start_time);
+  let end = d.end_time ? mins(d.end_time) : start + 120;
+  if (end <= start) end += 1440; // past midnight
+  return start < b && end > a;
+}
+const findText = d => `${d.title || ''} ${d.business_name || ''} ${d.category || ''} ${tagsOf(d).join(' ')} ${d.price_info || ''} ${d.description || ''}`.toLowerCase();
+function feedPool() {
+  const have = new Set(poll.options.map(o => o.deal_id));
+  return nearby.filter(d => !have.has(d.deal_id) && goodPick(d));
+}
+function feedIcon(d) {
+  const t = tagsOf(d), has = k => t.some(x => x.includes(k));
+  return has('music') ? '🎵' : has('sports') ? '🏈' : has('trivia') || has('games') ? '🎯' : has('comedy') ? '😂' : has('theater') ? '🎭'
+    : has('happy hour') || has('drinks') || has('wine') ? '🍻' : has('brunch') ? '🌅' : has('food') ? '🍽️' : has('family') || has('kids') ? '🎈' : '📍';
+}
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+function feedWhen(d) {
+  const time = d.start_time ? `${t12(d.start_time)}${d.end_time ? '–' + t12(d.end_time) : ''}` : d.end_time ? `until ${t12(d.end_time)}` : '';
+  if (d.deal_type === 'recurring') {
+    const days = (d.recurring_days || []).map(Number);
+    const which = !days.length || days.length === 7 ? 'Every day' : days.length <= 3 ? days.map(i => DOW[i]).join(', ') : 'Weekly';
+    return [which, time].filter(Boolean).join(' · ');
+  }
+  if (d.deal_type === 'always_on') return time || 'Any time';
+  return [d.valid_from && d.valid_from > isoDay(new Date()) && !futureDay() ? day(d.valid_from) : '', time].filter(Boolean).join(' ');
+}
+const miles = m => (m == null ? '' : m < 160 ? 'Next door' : `${(m / 1609.34).toFixed(m < 16093 ? 1 : 0)} mi`);
+function feedCard(d) {
+  const img = /^https:\/\//.test(d.image_url || '') ? `<img class="thumb" src="${esc(d.image_url)}" alt="" loading="lazy" onerror="this.replaceWith(Object.assign(document.createElement('span'),{className:'thumb icon',textContent:'${feedIcon(d)}'}))">`
+    : `<span class="thumb icon">${feedIcon(d)}</span>`;
+  const about = d.description ? (d.description.length > 90 ? d.description.slice(0, 87).trimEnd() + '…' : d.description) : '';
+  // The deal tag, unless it only repeats the title ("Sunday brunch specials").
+  const tag = d.price_info && !/^\s*tickets\s*$/i.test(d.price_info) && d.price_info.toLowerCase() !== String(d.title || '').toLowerCase() ? `<span class="deal">${esc(d.price_info)}</span>` : '';
+  return `<button class="pick" data-id="${esc(d.deal_id)}">${img}<span class="grow">
+    <div class="t">${esc(d.title)}</div>
+    <div class="m">${esc([d.business_name, miles(d.distance_m), feedWhen(d)].filter(Boolean).join(' · '))}</div>
+    ${about ? `<div class="about">${esc(about)}</div>` : ''}${tag}
+  </span><span class="plus">＋ Add</span></button>`;
+}
+function feedBody() {
+  const q = feed.q.trim().toLowerCase();
+  const scoped = feedPool().filter(d => (!q || findText(d).includes(q)) && (!feed.mi || (d.distance_m != null && d.distance_m <= feed.mi * 1609.34)) && slotOk(d, feed.slot));
+  const chips = (rows, on, attr, count) => `<div class="chips">${rows.map(([k, label, icon]) => {
+    const n = count ? count(k) : null;
+    if (count && k && !n && k !== on) return ''; // nothing of that kind here
+    return `<button class="chip ${k === on ? 'on' : ''}" ${attr}="${esc(k)}">${icon ? icon + ' ' : ''}${esc(label)}${n != null ? ` <span class="c">${n}</span>` : ''}</button>`;
+  }).join('')}</div>`;
+  // One card per place, nearest first.
+  const seen = new Set();
+  const list = scoped.filter(d => catOk(d, feed.cat) && !seen.has(d.business_name) && seen.add(d.business_name))
+    .sort((a, b) => (a.distance_m ?? 1e9) - (b.distance_m ?? 1e9));
+  const shown = list.slice(0, feed.shown);
+  const empty = feed.q.trim() ? `Nothing nearby matches “${esc(feed.q.trim())}”.` : 'Nothing matches those filters. Try All, a wider distance or another time.';
+  return chips(PICK_CATS, feed.cat, 'data-cat', k => (k ? new Set(scoped.filter(d => catOk(d, k)).map(d => d.business_name)).size : new Set(scoped.map(d => d.business_name)).size))
+    + chips(MILES, feed.mi, 'data-mi') + chips(SLOTS, feed.slot, 'data-slot')
+    + (shown.length ? shown.map(feedCard).join('') : `<p class="sub">${empty}</p>`)
+    + (list.length > shown.length ? `<button class="suggest" id="feedmore">Show ${Math.min(FEED_STEP, list.length - shown.length)} more</button>` : '');
+}
 function picksHtml() {
   if (!nearby) return '<p class="sub">Loading what’s on nearby…</p>';
-  const have = new Set(poll.options.map(o => o.deal_id)), seen = new Set();
-  const list = nearby.filter(d => !have.has(d.deal_id) && goodPick(d) && !seen.has(d.business_name) && seen.add(d.business_name)).slice(0, 10);
-  if (!list.length) return '<p class="sub">Nothing else on nearby right now. In the near.by app you can search any area.</p>';
-  return list.map(d => `<button class="pick" data-id="${esc(d.deal_id)}"><span class="grow"><div class="t">${esc(d.title)}</div><div class="m">${esc([d.business_name, d.start_time ? t12(d.start_time) : '', d.price_info, d.price_level].filter(Boolean).join(' · '))}</div></span><span class="plus">＋</span></button>`).join('');
+  if (!feedPool().length) return '<p class="sub">Nothing else on nearby right now. In the near.by app you can search any area.</p>';
+  const dayNote = futureDay() ? `<p class="who" style="margin:0 0 8px">What’s on ${esc(day(futureDay()))}, near ${esc(poll.options.find(o => o.lat)?.business || 'the first place')}.</p>` : '';
+  return `<div class="feed">${dayNote}<input id="find" type="search" maxlength="40" autocomplete="off" placeholder="Search places, food, events…" value="${esc(feed.q)}"><div id="feedbody">${feedBody()}</div></div>`;
+}
+// Typing redraws just the chips and cards, so the search box keeps focus.
+function bindFeed() {
+  const body = document.getElementById('feedbody');
+  if (!body) return;
+  body.querySelectorAll('.pick').forEach(b => b.addEventListener('click', () => addOption(b.dataset.id)));
+  body.querySelectorAll('[data-cat]').forEach(b => b.addEventListener('click', () => { feed.cat = b.dataset.cat; feed.shown = FEED_STEP; redrawFeed(); }));
+  body.querySelectorAll('[data-mi]').forEach(b => b.addEventListener('click', () => { feed.mi = Number(b.dataset.mi); feed.shown = FEED_STEP; redrawFeed(); }));
+  body.querySelectorAll('[data-slot]').forEach(b => b.addEventListener('click', () => { feed.slot = b.dataset.slot; feed.shown = FEED_STEP; redrawFeed(); }));
+  document.getElementById('feedmore')?.addEventListener('click', () => { feed.shown += FEED_STEP; redrawFeed(); });
+}
+function redrawFeed() {
+  const body = document.getElementById('feedbody');
+  if (!body) return;
+  body.innerHTML = feedBody();
+  bindFeed();
 }
 // Notes and comments: anyone with the link can leave one and delete their own.
 // name: null when the name box is already at the top of the page.
@@ -416,8 +527,8 @@ async function load() {
   try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { fresh = poll ? undefined : null; }
   if (saving || lastWrite >= startedAt) return;
   if (fresh !== undefined) poll = fresh;
-  // Don't redraw under someone typing their name or picking a time.
-  if (!addingTime && !['name', 'note'].includes(document.activeElement && document.activeElement.id)) render();
+  // Don't redraw under someone typing their name, a note or a search, or picking a time.
+  if (!addingTime && !['name', 'note', 'find'].includes(document.activeElement && document.activeElement.id)) render();
   loadInfo();
 }
 load();
