@@ -39,6 +39,9 @@
   .more { color:var(--muted); font-size:13px; margin:-4px 2px 12px; line-height:1.4; }
   .more a { color:#c2410c; font-weight:700; text-decoration:none; white-space:nowrap; }
   .box { background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:14px; margin:0 0 10px; }
+  .note { text-align:left; border-top:1px solid var(--line); padding:9px 0; font-size:15px; line-height:1.4; overflow-wrap:anywhere; }
+  .note .del { background:none; border:0; font:inherit; font-size:12px; color:var(--muted); cursor:pointer; padding:0 0 0 6px; }
+  textarea#note { display:block; width:100%; box-sizing:border-box; font:inherit; font-size:16px; border:1.5px solid var(--line); border-radius:12px; padding:12px; margin-top:8px; resize:vertical; }
   .box h2 { font-size:13px; letter-spacing:.6px; text-transform:uppercase; color:var(--muted); margin:0 0 8px; }
   .how { display:flex; gap:8px; }
   .how button { flex:1; font:inherit; font-weight:700; font-size:14px; background:#fff; border:1.5px solid var(--line); border-radius:12px; padding:10px 4px; cursor:pointer; color:inherit; }
@@ -128,12 +131,15 @@ function render() {
   // Keep a name that's typed but not sent yet across the 10-second refresh.
   const typed = document.getElementById('name');
   const savedName = typed && typed.value ? typed.value : (() => { try { return localStorage.getItem('nearby.name') || ''; } catch { return ''; } })();
+  // Keep a note that's typed but not posted yet across the refresh.
+  const typedNote = document.getElementById('note')?.value || '';
+  const askName = (invite ? !poll.i_am_down : !voted) && !poll.closed;
   app.innerHTML = `
     <h1>${esc(poll.title || (invite ? 'Who’s in?' : 'Where should we go?'))}</h1>
     <p class="sub">${invite
       ? (poll.closed ? 'This invite has closed.' : 'Tap “I’m down” if you’re in. No app needed.')
       : `${poll.closed ? 'This vote has closed.' : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
-    ${(invite ? !poll.i_am_down : !voted) && !poll.closed ? `<input id="name" maxlength="30" placeholder="Your name (so friends know who${invite ? '’s in' : ' voted'})" value="${esc(savedName)}">` : ''}
+    ${askName ? `<input id="name" maxlength="30" placeholder="Your name (so friends know who${invite ? '’s in' : ' voted'})" value="${esc(savedName)}">` : ''}
     ${poll.options.map((o, i) => {
       const n = poll.counts[i] || 0, pct = people ? Math.min(100, Math.round(n / people * 100)) : 0;
       const names = poll.voters.filter(v => v.option === i).map(v => esc(v.name)).join(', ');
@@ -154,6 +160,7 @@ function render() {
     ${poll.can_add ? `<button class="suggest" id="suggest">${adding ? 'Done' : '＋ Suggest another place'}</button>${adding ? picksHtml() : ''}` : ''}
     ${poll.how && !invite ? `<div class="box"><h2>How should we do it?</h2><div class="how">${[['dine_in', '🍽️ Dine in'], ['pickup', '🛍️ Pickup'], ['delivery', '🚗 Delivery']].map(([k, l]) => `<button data-how="${k}" class="${poll.my_how === k ? 'on' : ''}">${l}<b>${poll.how[k] || 0}</b></button>`).join('')}</div><div class="who">A head count for the group. Check with the place that it offers pickup or delivery.</div></div>` : ''}
     ${whenHtml()}
+    ${notesHtml(askName ? null : savedName, typedNote)}
     ${lead.length > 1 && !poll.closed ? '<p class="sub" style="text-align:center;color:#9a3412;font-weight:700">It’s a tie. One more vote settles it.</p>' : ''}
     ${go >= 0 ? `<div class="down">
       <h2>${(poll.down || []).length ? `🙌 ${poll.down.length} ${poll.down.length === 1 ? 'person is' : 'people are'} down` : 'Who’s down?'}</h2>
@@ -162,7 +169,8 @@ function render() {
     </div>` : ''}
     ${go >= 0 && poll.options[go].lat ? `<a class="cta" href="https://maps.google.com/?daddr=${poll.options[go].lat},${poll.options[go].lng}">Directions to ${invite ? '' : 'the leader: '}${esc(poll.options[go].business)}</a>` : ''}
     <a class="cta" style="background:#fff;color:#14110d;border:1.5px solid #ece8e0" href="nearby://vote?p=${code}">Open in the near.by app</a>`;
-  app.querySelectorAll('.opt').forEach(b => b.addEventListener('click', () => vote(Number(b.dataset.i))));
+  // Only the places (data-i); time rows and the plan card share the .opt look.
+  app.querySelectorAll('.opt[data-i]').forEach(b => b.addEventListener('click', () => vote(Number(b.dataset.i))));
   document.getElementById('downbtn')?.addEventListener('click', () => setDown(!poll.i_am_down));
   document.getElementById('suggest')?.addEventListener('click', () => { adding = !adding; if (adding) loadNearby(); render(); });
   app.querySelectorAll('[data-how]').forEach(b => b.addEventListener('click', () => setHow(b.dataset.how)));
@@ -170,6 +178,8 @@ function render() {
   app.querySelectorAll('[data-time]').forEach(b => b.addEventListener('click', () => toggleTime(Number(b.dataset.time))));
   document.getElementById('addtime')?.addEventListener('click', () => { addingTime = !addingTime; render(); });
   document.getElementById('savetime')?.addEventListener('click', addTime);
+  document.getElementById('postnote')?.addEventListener('click', postNote);
+  app.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => deleteNote(Number(b.dataset.del))));
 }
 
 // When works? Friends tap every day and time they can make, or suggest another.
@@ -213,7 +223,7 @@ function whenHtml() {
     : plan || planDay || starts.length ? 'Can’t make it? Suggest another time.' : 'No time picked yet. Suggest one.';
   // What's already planned, before anyone suggests another time: the vote's
   // day and time, or its day and each place's own start time.
-  const planCard = !times.length && (plan || planDay || starts.length) ? `<div class="opt mine" style="cursor:default"><span class="row"><span class="grow">
+  const planCard = !times.length && (plan || planDay || starts.length) ? `<div class="opt mine plan" style="cursor:default"><span class="row"><span class="grow">
       <div class="t">📅 ${plan ? `${esc(day(plan.day))} · ${esc(t12(plan.time))}` : `${planDay ? esc(day(planDay)) : 'Today'} · ${starts.length ? 'times vary' : 'no time set'}`}</div>
       <div class="who">${plan ? 'The plan' : starts.length ? starts.map(o => `${esc(o.business || o.title)} ${esc(t12(o.start_time))}`).join(' · ') : 'The plan · suggest a time below'}</div>
     </span></span></div>` : '';
@@ -297,6 +307,37 @@ function picksHtml() {
   if (!list.length) return '<p class="sub">Nothing else on nearby right now. In the near.by app you can search any area.</p>';
   return list.map(d => `<button class="pick" data-id="${esc(d.deal_id)}"><span class="grow"><div class="t">${esc(d.title)}</div><div class="m">${esc([d.business_name, d.start_time ? t12(d.start_time) : '', d.price_info, d.price_level].filter(Boolean).join(' · '))}</div></span><span class="plus">＋</span></button>`).join('');
 }
+// Notes and comments: anyone with the link can leave one and delete their own.
+// name: null when the name box is already at the top of the page.
+function notesHtml(name, typed) {
+  if (!Array.isArray(poll.comments)) return ''; // older database without comments
+  const list = poll.comments;
+  const open = !(poll.closed && new Date(poll.closes_at).getTime() < Date.now() - 864e5);
+  const ago = at => { const m = Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 60000));
+    return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} hr ago` : day(String(at).slice(0, 10)); };
+  const rows = list.map(c => `<div class="note"><div><b>${c.mine ? 'You' : esc(c.name)}</b> <span class="who">${esc(ago(c.at))}</span>${c.mine ? ` <button class="del" data-del="${Number(c.id)}">Delete</button>` : ''}</div><div>${esc(c.body)}</div></div>`).join('');
+  return `<div class="box"><h2>💬 Notes${list.length ? ' · ' + list.length : ''}</h2>
+    ${list.length ? rows : '<p class="m" style="margin:0 0 8px">Anything the group should know? “I can only do after 7”, “Sapa needs a reservation”…</p>'}
+    ${open ? `${name === '' ? '<input id="name" maxlength="30" placeholder="Your name (so friends know who wrote it)" style="margin:8px 0 0">' : ''}
+      <textarea id="note" maxlength="300" rows="2" placeholder="Add a note">${esc(typed)}</textarea>
+      <button class="downbtn" id="postnote" style="margin-top:6px">Post</button>` : ''}
+  </div>`;
+}
+async function postNote() {
+  const el = document.getElementById('note');
+  const body = el ? el.value.trim() : '';
+  if (!body || saving) return;
+  saving = true;
+  try { poll = await rpc('add_poll_comment', { p_code: code, p_voter_key: me, p_name: myName(), p_body: body }); el.value = ''; lastWrite = Date.now(); }
+  catch (e) { alert(/too many/.test(e.message) ? 'That’s a lot of comments. Try again in a few minutes.' : /closed/.test(e.message) ? 'This vote has closed.' : "Couldn't post that. Try again."); }
+  saving = false;
+  render();
+}
+async function deleteNote(id) {
+  if (!confirm('Delete your note?')) return;
+  try { poll = await rpc('delete_poll_comment', { p_code: code, p_voter_key: me, p_id: id }); lastWrite = Date.now(); render(); }
+  catch { alert("Couldn't delete that. Try again."); }
+}
 function myName() {
   const el = document.getElementById('name');
   let n = el ? el.value.trim() : '';
@@ -349,7 +390,7 @@ async function load() {
   if (saving || lastWrite >= startedAt) return;
   if (fresh !== undefined) poll = fresh;
   // Don't redraw under someone typing their name or picking a time.
-  if (!addingTime && (!document.getElementById('name') || !document.activeElement || document.activeElement.id !== 'name')) render();
+  if (!addingTime && !['name', 'note'].includes(document.activeElement && document.activeElement.id)) render();
   loadInfo();
 }
 load();
