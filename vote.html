@@ -201,7 +201,7 @@ function timesHtml() {
     : planned ? `The plan is ${esc(day(planned.day))} at ${esc(t12(planned.time))}. Can’t make it? Suggest another time and everyone can tick what works.`
     : 'Suggest a day and time, and everyone can tick what works for them.';
   const form = timeForm ? `<div class="timeform">
-      <input type="date" id="tday" min="${localDate()}" value="${esc(formDay || (planned && planned.day) || localDate())}">
+      <input type="date" id="tday" min="${localDate()}" max="${localDate(new Date(Date.now() + 60 * 864e5))}" value="${esc(formDay || (planned && planned.day) || localDate())}">
       <input type="time" id="ttime" step="900" value="${esc(formTime || (planned && planned.time) || '19:00')}">
       <button class="downbtn" id="taddbtn" style="margin-top:0">Add this time</button>
     </div>` : '';
