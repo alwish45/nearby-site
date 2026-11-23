@@ -125,7 +125,9 @@ function render() {
   // One option is an invite: nothing to vote on, just "I'm down".
   const invite = poll.options.length === 1;
   const go = invite ? 0 : win;
-  const savedName = (() => { try { return localStorage.getItem('nearby.name') || ''; } catch { return ''; } })();
+  // Keep a name that's typed but not sent yet across the 10-second refresh.
+  const typed = document.getElementById('name');
+  const savedName = typed && typed.value ? typed.value : (() => { try { return localStorage.getItem('nearby.name') || ''; } catch { return ''; } })();
   app.innerHTML = `
     <h1>${esc(poll.title || (invite ? 'Who’s in?' : 'Where should we go?'))}</h1>
     <p class="sub">${invite
@@ -284,7 +286,12 @@ async function setHow(how) {
   catch { alert("Couldn't save that. Try again."); }
 }
 
+// A refresh that started before your tap must not undo it on screen, and a
+// double tap sends one vote (a second toggle would really take it back).
+let saving = false, lastWrite = 0;
 async function vote(i) {
+  if (saving) return;
+  saving = true;
   const nameEl = document.getElementById('name');
   const name = nameEl ? nameEl.value.trim() : null;
   try { if (name) localStorage.setItem('nearby.name', name); } catch {}
@@ -296,6 +303,7 @@ async function vote(i) {
     render();
   }
   catch (e) { alert(/closed/.test(e.message) ? 'This vote has closed.' : "Couldn't save your vote. Try again."); }
+  finally { saving = false; lastWrite = Date.now(); }
 }
 
 async function setDown(on) {
@@ -308,7 +316,12 @@ async function setDown(on) {
 
 async function load() {
   if (!code) { render(); return; }
-  try { poll = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { poll = null; }
+  const startedAt = Date.now();
+  let fresh;
+  // A dropped connection keeps the last good results instead of "Vote not found".
+  try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { fresh = poll ? undefined : null; }
+  if (saving || lastWrite >= startedAt) return;
+  if (fresh !== undefined) poll = fresh;
   // Don't redraw under someone typing their name or picking a time.
   if (!addingTime && (!document.getElementById('name') || !document.activeElement || document.activeElement.id !== 'name')) render();
   loadInfo();
