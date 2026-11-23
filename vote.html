@@ -193,7 +193,16 @@ const isoDay = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate
 function planned() {
   const os = poll.options || [];
   if (!os.length || os.some(x => !x.start_time || x.start_time !== os[0].start_time)) return null;
-  return { day: poll.plan_day || os[0].valid_from || isoDay(new Date()), time: String(os[0].start_time).slice(0, 5) };
+  const today = isoDay(new Date()), shared = sharedDate(os);
+  // A weekly special's valid_from is when it was listed (often months ago): never a plan.
+  const own = os[0].valid_from && os[0].valid_from >= today ? os[0].valid_from : null;
+  return { day: shared && (!poll.plan_day || shared > poll.plan_day) ? shared : poll.plan_day || own || today, time: String(os[0].start_time).slice(0, 5) };
+}
+// The one date every option is on, if after today: a vote on Saturday's show
+// started on Monday is for Saturday even if it was saved for today.
+function sharedDate(os) {
+  const d = os.length && os[0].valid_from;
+  return d && d > isoDay(new Date()) && os.every(o => o.valid_from === d) ? d : null;
 }
 function whenHtml() {
   if (!Array.isArray(poll.times)) return ''; // older database without time voting
@@ -201,7 +210,8 @@ function whenHtml() {
   const plan = planned();
   if (!times.length && poll.closed) return '';
   const today = isoDay(new Date()), last = isoDay(new Date(Date.now() + 60 * 864e5));
-  const planDay = poll.plan_day && poll.plan_day >= today ? poll.plan_day : null;
+  const shared = sharedDate(poll.options || []);
+  const planDay = shared && (!poll.plan_day || shared > poll.plan_day) ? shared : poll.plan_day && poll.plan_day >= today ? poll.plan_day : null;
   const starts = plan ? [] : (poll.options || []).filter(o => o.start_time);
   const topT = Math.max(0, ...counts);
   const people = poll.time_people || 0;
@@ -237,21 +247,31 @@ function whenHtml() {
     ${poll.can_add_time ? `<button class="suggest" id="addtime" style="margin:0">${addingTime ? 'Cancel' : '＋ Suggest another time'}</button>${form}` : ''}
   </div>`;
 }
-async function toggleTime(i) {
-  try { poll = await rpc('toggle_time', { p_code: code, p_voter_key: me, p_index: i, p_name: myName() }); render(); }
-  catch (e) { alert(/closed/.test(e.message) ? 'This vote has closed.' : "Couldn't save that. Try again."); }
+// One tap at a time, and a refresh already on its way can't undo it (as for votes).
+async function once(fn) {
+  if (saving) return;
+  saving = true;
+  try { await fn(); } finally { saving = false; lastWrite = Date.now(); }
+}
+function toggleTime(i) {
+  return once(async () => {
+    try { poll = await rpc('toggle_time', { p_code: code, p_voter_key: me, p_index: i, p_name: myName() }); render(); }
+    catch (e) { alert(/closed/.test(e.message) ? 'This vote has closed.' : "Couldn't save that. Try again."); }
+  });
 }
 async function addTime() {
   const d = document.getElementById('tday').value, t = document.getElementById('ttime').value;
   if (!d || !t) { alert('Pick a day and a time.'); return; }
   const plan = planned();
+  if (saving) return;
+  saving = true;
   try {
     poll = await rpc('add_poll_time', { p_code: code, p_voter_key: me, p_day: d, p_time: t, p_name: myName(),
       p_planned_day: plan ? plan.day : null, p_planned_time: plan ? plan.time : null });
     addingTime = false; render();
   } catch (e) {
     alert(/6 times/.test(e.message) ? 'This vote already has 6 times.' : /two months/.test(e.message) ? 'Pick a day in the next two months.' : "Couldn't add that time. Try again.");
-  }
+  } finally { saving = false; lastWrite = Date.now(); }
 }
 
 // Suggest another place: what's on near the first option, on the vote's day.
@@ -267,10 +287,16 @@ async function loadNearby() {
     if (day) {
       // That day's weekly specials and events, not what's on today.
       const dow = new Date(day + 'T12:00:00').getDay();
-      const [ev, wk] = await Promise.all(['events', 'weekly'].map(k => rpc('deals_around', { in_lat: at.lat, in_lng: at.lng, in_radius_m: 8000, in_kind: k })));
-      nearby = [...(ev || []), ...(wk || [])]
-        .filter(r => r.deal_type === 'recurring' ? (r.recurring_days || []).includes(dow) && (!r.valid_from || r.valid_from <= day) && (!r.valid_until || r.valid_until >= day)
-          : (r.valid_from || '') <= day && (r.valid_until || r.valid_from || '') >= day)
+      // 'ongoing' (exhibits under way, always-on deals) is newer: without it, carry on.
+      const [ev, wk, on] = await Promise.all(['events', 'weekly', 'ongoing'].map(k => rpc('deals_around', { in_lat: at.lat, in_lng: at.lng, in_radius_m: 8000, in_kind: k }).catch(() => [])));
+      const inDates = r => (!r.valid_from || r.valid_from <= day) && (!r.valid_until || r.valid_until >= day);
+      // No weekdays listed means every day.
+      const onDow = r => !(r.recurring_days || []).length || r.recurring_days.map(Number).includes(dow);
+      nearby = [...(ev || []), ...(wk || []), ...(on || [])]
+        .sort((a, b) => (a.distance_m ?? 1e9) - (b.distance_m ?? 1e9))
+        .filter(r => r.deal_type === 'recurring' ? onDow(r) && inDates(r)
+          : r.deal_type === 'always_on' ? inDates(r)
+          : (r.valid_from || '') <= day && (r.valid_until || r.valid_from || '') >= day && ((r.valid_until || r.valid_from) === r.valid_from || onDow(r)))
         .map(r => ({ ...r, deal_id: r.id, business_name: r.businesses?.name, category: r.businesses?.category, price_level: r.businesses?.price_level }));
     } else {
       nearby = await rpc('deals_near_v3', { in_lat: at.lat, in_lng: at.lng, in_radius_m: 8000 });
@@ -344,13 +370,13 @@ function myName() {
   try { if (n) localStorage.setItem('nearby.name', n); else n = localStorage.getItem('nearby.name') || ''; } catch {}
   return n || null;
 }
-async function addOption(id) {
-  try { poll = await rpc('add_poll_option', { p_code: code, p_voter_key: me, p_deal_id: id, p_name: myName() }); adding = false; info = null; render(); loadInfo(); }
-  catch (e) { alert(/full/.test(e.message) ? 'This vote already has 6 options.' : "Couldn't add that. Try again."); }
+function addOption(id) {
+  return once(async () => { try { poll = await rpc('add_poll_option', { p_code: code, p_voter_key: me, p_deal_id: id, p_name: myName() }); adding = false; info = null; render(); loadInfo(); }
+  catch (e) { alert(/full/.test(e.message) ? 'This vote already has 6 options.' : "Couldn't add that. Try again."); } });
 }
-async function setHow(how) {
-  try { poll = await rpc('set_how', { p_code: code, p_voter_key: me, p_how: how }); render(); }
-  catch { alert("Couldn't save that. Try again."); }
+function setHow(how) {
+  return once(async () => { try { poll = await rpc('set_how', { p_code: code, p_voter_key: me, p_how: how }); render(); }
+  catch { alert("Couldn't save that. Try again."); } });
 }
 
 // A refresh that started before your tap must not undo it on screen, and a
@@ -373,7 +399,8 @@ async function vote(i) {
   finally { saving = false; lastWrite = Date.now(); }
 }
 
-async function setDown(on) {
+function setDown(on) { return once(() => setDownNow(on)); }
+async function setDownNow(on) {
   const nameEl = document.getElementById('name');
   let name = nameEl ? nameEl.value.trim() : '';
   try { if (!name) name = localStorage.getItem('nearby.name') || ''; } catch {}
