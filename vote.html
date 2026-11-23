@@ -177,10 +177,13 @@ function render() {
 let addingTime = false;
 const pad = n => String(n).padStart(2, '0');
 const isoDay = d => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-// The plan the vote started with: the first option's day and start time.
+// The plan the vote started with: the day it was started for (plan_day, e.g.
+// "Thursday?"; older votes fall back to the options' date) and the start
+// time, only when every option starts at that same time.
 function planned() {
-  const o = (poll.options || []).find(x => x.start_time) || {};
-  return o.start_time ? { day: o.valid_from || isoDay(new Date()), time: String(o.start_time).slice(0, 5) } : null;
+  const os = poll.options || [];
+  if (!os.length || os.some(x => !x.start_time || x.start_time !== os[0].start_time)) return null;
+  return { day: poll.plan_day || os[0].valid_from || isoDay(new Date()), time: String(os[0].start_time).slice(0, 5) };
 }
 function whenHtml() {
   if (!Array.isArray(poll.times)) return ''; // older database without time voting
@@ -207,7 +210,7 @@ function whenHtml() {
     : plan ? `The plan is ${esc(day(plan.day))} at ${esc(t12(plan.time))}. Can’t make it? Suggest another time.` : 'No time picked yet. Suggest one.';
   const today = isoDay(new Date()), last = isoDay(new Date(Date.now() + 60 * 864e5));
   const form = addingTime ? `<div class="how" style="margin-top:8px">
-      <input id="tday" type="date" min="${today}" max="${last}" value="${esc(plan ? (plan.day < today ? today : plan.day) : today)}" style="margin:0">
+      <input id="tday" type="date" min="${today}" max="${last}" value="${esc(plan ? (plan.day < today ? today : plan.day) : poll.plan_day && poll.plan_day > today ? poll.plan_day : today)}" style="margin:0">
       <input id="ttime" type="time" step="900" value="${esc(plan ? plan.time : '19:00')}" style="margin:0">
     </div><button class="downbtn" id="savetime">Add this time</button>` : '';
   return `<div class="box"><h2>When works?</h2>
@@ -233,13 +236,28 @@ async function addTime() {
   }
 }
 
-// Suggest another place: what's on today near the first option.
+// Suggest another place: what's on near the first option, on the vote's day.
 let adding = false, nearby = null;
+// The vote's day when it's later than today ("Thursday?"), else null.
+const futureDay = () => (poll && poll.plan_day && poll.plan_day > isoDay(new Date()) ? poll.plan_day : null);
 async function loadNearby() {
   if (nearby || !poll) return;
   const at = poll.options.find(o => o.lat);
   if (!at) { nearby = []; return; }
-  try { nearby = await rpc('deals_near_v3', { in_lat: at.lat, in_lng: at.lng, in_radius_m: 8000 }); } catch { nearby = []; }
+  try {
+    const day = futureDay();
+    if (day) {
+      // That day's weekly specials and events, not what's on today.
+      const dow = new Date(day + 'T12:00:00').getDay();
+      const [ev, wk] = await Promise.all(['events', 'weekly'].map(k => rpc('deals_around', { in_lat: at.lat, in_lng: at.lng, in_radius_m: 8000, in_kind: k })));
+      nearby = [...(ev || []), ...(wk || [])]
+        .filter(r => r.deal_type === 'recurring' ? (r.recurring_days || []).includes(dow) && (!r.valid_from || r.valid_from <= day) && (!r.valid_until || r.valid_until >= day)
+          : (r.valid_from || '') <= day && (r.valid_until || r.valid_from || '') >= day)
+        .map(r => ({ ...r, deal_id: r.id, business_name: r.businesses?.name, category: r.businesses?.category, price_level: r.businesses?.price_level }));
+    } else {
+      nearby = await rpc('deals_near_v3', { in_lat: at.lat, in_lng: at.lng, in_radius_m: 8000 });
+    }
+  } catch { nearby = []; }
   render();
 }
 // The same rules as the app's vote list: only somewhere the group could go
@@ -257,7 +275,7 @@ function goodPick(d) {
   if (HEALTH_TEXT.test(`${d.title || ''} ${d.business_name || ''}`)) return false;
   if (CATERING_TEXT.test(d.title || '') || CATERING_DESC.test(d.description || '')) return false;
   // Already over for today. An end time at or before the start (10pm to 1am) runs past midnight, so it isn't over.
-  if (d.end_time) {
+  if (d.end_time && !futureDay()) {
     const now = new Date(), end = mins(d.end_time), start = d.start_time ? mins(d.start_time) : null;
     const pastMidnight = start != null ? end <= start : end < 300;
     if (!pastMidnight && now.getHours() * 60 + now.getMinutes() > end) return false;
