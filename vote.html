@@ -39,6 +39,9 @@
   .more { color:var(--muted); font-size:13px; margin:-4px 2px 12px; line-height:1.4; }
   .more a { color:#c2410c; font-weight:700; text-decoration:none; white-space:nowrap; }
   .box { background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:14px; margin:0 0 10px; }
+  .cnote { text-align:left; border-top:1px solid var(--line); padding:9px 0; font-size:15px; line-height:1.4; overflow-wrap:anywhere; }
+  .cnote .del { background:none; border:0; font:inherit; font-size:12px; color:var(--muted); cursor:pointer; padding:0 0 0 6px; }
+  textarea#note { display:block; width:100%; box-sizing:border-box; font:inherit; font-size:16px; border:1.5px solid var(--line); border-radius:12px; padding:12px; margin-top:8px; resize:vertical; }
   .box h2 { font-size:13px; letter-spacing:.6px; text-transform:uppercase; color:var(--muted); margin:0 0 8px; }
   .how { display:flex; gap:8px; }
   .how button { flex:1; font:inherit; font-weight:700; font-size:14px; background:#fff; border:1.5px solid var(--line); border-radius:12px; padding:10px 4px; cursor:pointer; color:inherit; }
@@ -111,6 +114,7 @@ async function rpc(fn, body) {
   const r = await fetch(API + fn, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   const j = await r.json().catch(() => null);
   if (!r.ok) throw new Error((j && j.message) || 'Something went wrong');
+  if (fn !== 'get_poll' && !fn.startsWith('deals_')) lastWrite = Date.now();
   return j;
 }
 
@@ -173,7 +177,7 @@ function more(o) {
 function plannedSlot() {
   const os = (poll.options || []).filter(o => o.start_time);
   if (!os.length || os.some(o => o.start_time !== os[0].start_time)) return null;
-  return { day: os[0].valid_from || localDate(), time: os[0].start_time.slice(0, 5) };
+  return { day: poll.plan_day || os[0].valid_from || localDate(), time: os[0].start_time.slice(0, 5) };
 }
 let timeForm = false, formDay = '', formTime = '';
 function timesHtml() {
@@ -196,13 +200,17 @@ function timesHtml() {
       <span class="n" style="font-size:16px">${n}${people ? `/${people}` : ''}</span>
     </button>`;
   }).join('');
+  const planDay = poll.plan_day && poll.plan_day >= localDate() ? poll.plan_day : null;
+  const starts = planned ? [] : (poll.options || []).filter(o => o.start_time);
   const intro = times.length
     ? 'Tick every time that works for you. The best one for the group is marked.'
     : planned ? `The plan is ${esc(day(planned.day))} at ${esc(t12(planned.time))}. Can’t make it? Suggest another time and everyone can tick what works.`
+    : starts.length ? `${planDay ? esc(day(planDay)) + ': ' : ''}each place has its own time (${starts.map(o => `${esc(o.business || o.title)} ${esc(t12(o.start_time))}`).join(', ')}). Suggest one time and everyone can tick what works.`
+    : planDay ? `The plan is ${esc(day(planDay))}, no time set yet. Suggest one and everyone can tick what works.`
     : 'Suggest a day and time, and everyone can tick what works for them.';
   const form = timeForm ? `<div class="timeform">
-      <input type="date" id="tday" min="${localDate()}" max="${localDate(new Date(Date.now() + 60 * 864e5))}" value="${esc(formDay || (planned && planned.day) || localDate())}">
-      <input type="time" id="ttime" step="900" value="${esc(formTime || (planned && planned.time) || '19:00')}">
+      <input type="date" id="tday" min="${localDate()}" max="${localDate(new Date(Date.now() + 60 * 864e5))}" value="${esc(formDay || (planned && planned.day >= localDate() ? planned.day : '') || futureDay() || localDate())}">
+      <input type="time" id="ttime" step="900" value="${esc(formTime || (planned && planned.time) || (starts[0] && starts[0].start_time.slice(0, 5)) || '19:00')}">
       <button class="downbtn" id="taddbtn" style="margin-top:0">Add this time</button>
     </div>` : '';
   return `<div class="box"><h2>🕒 When works?</h2><p class="m" style="margin:0 0 8px">${intro}</p>${rows}
@@ -242,7 +250,10 @@ function render() {
   // One option is an invite: nothing to vote on, just "I'm down".
   const invite = poll.options.length === 1;
   const go = invite ? 0 : win;
-  const savedName = (() => { try { return localStorage.getItem('nearby.name') || ''; } catch { return ''; } })();
+  // Keep a name or note that's typed but not sent yet across redraws.
+  const typed = document.getElementById('name');
+  const savedName = typed && typed.value ? typed.value : (() => { try { return localStorage.getItem('nearby.name') || ''; } catch { return ''; } })();
+  const typedNote = document.getElementById('note')?.value || '';
   app.innerHTML = `
     <h1>${esc(poll.title || (invite ? 'Who’s in?' : 'Where should we go?'))}</h1>
     <p class="sub">${invite
@@ -276,6 +287,7 @@ function render() {
     ${poll.can_add ? `<button class="suggest" id="suggest">${adding ? 'Done' : '＋ Suggest another place'}</button>${adding ? picksHtml() : ''}` : ''}
     ${'times' in poll ? timesHtml() : ''}
     ${poll.how && !invite ? `<div class="box"><h2>How should we do it?</h2><div class="how">${[['dine_in', '🍽️ Dine in'], ['pickup', '🛍️ Pickup'], ['delivery', '🚗 Delivery']].map(([k, l]) => `<button data-how="${k}" class="${poll.my_how === k ? 'on' : ''}">${l}<b>${poll.how[k] || 0}</b></button>`).join('')}</div><div class="who">A head count for the group. Check with the place that it offers pickup or delivery.</div></div>` : ''}
+    ${notesHtml(typedNote)}
     ${lead.length > 1 && !poll.closed ? '<p class="sub" style="text-align:center;color:#9a3412;font-weight:700">It’s a tie. One more vote settles it.</p>' : ''}
     ${planHtml(go)}
     ${go >= 0 ? `<div class="down">
@@ -300,12 +312,46 @@ function render() {
   document.getElementById('tday')?.addEventListener('input', e => { formDay = e.target.value; });
   document.getElementById('ttime')?.addEventListener('input', e => { formTime = e.target.value; });
   document.getElementById('taddbtn')?.addEventListener('click', addTime);
+  document.getElementById('postnote')?.addEventListener('click', postNote);
+  app.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => deleteNote(Number(b.dataset.del))));
+}
+
+// Notes and comments: anyone with the link can leave one and delete their own.
+function notesHtml(typed) {
+  if (!Array.isArray(poll.comments)) return ''; // older database without comments
+  const list = poll.comments;
+  const canPost = !(poll.closed && new Date(poll.closes_at).getTime() < Date.now() - 864e5);
+  const ago = at => { const m = Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 60000));
+    return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} hr ago` : day(String(at).slice(0, 10)); };
+  const rows = list.map(c => `<div class="cnote"><div><b>${c.mine ? 'You' : esc(c.name)}</b> <span class="who">${esc(ago(c.at))}</span>${c.mine ? ` <button class="del" data-del="${Number(c.id)}">Delete</button>` : ''}</div><div>${esc(c.body)}</div></div>`).join('');
+  return `<div class="box"><h2>💬 Notes${list.length ? ' · ' + list.length : ''}</h2>
+    ${list.length ? rows : '<p class="m" style="margin:0 0 8px">Anything the group should know? “I can only do after 7”, “Sapa needs a reservation”…</p>'}
+    ${canPost ? `<textarea id="note" maxlength="300" rows="2" placeholder="Add a note">${esc(typed)}</textarea>
+      <button class="downbtn" id="postnote" style="margin-top:6px">Post</button>` : ''}
+  </div>`;
+}
+async function postNote() {
+  const el = document.getElementById('note');
+  const body = el ? el.value.trim() : '';
+  if (!body || saving) return;
+  saving = true;
+  try { poll = await rpc('add_poll_comment', { p_code: code, p_voter_key: me, p_name: myName(true), p_body: body }); el.value = ''; lastWrite = Date.now(); }
+  catch (e) { alert(/too many/.test(e.message) ? 'That’s a lot of comments. Try again in a few minutes.' : /closed/.test(e.message) ? 'This vote has closed.' : "Couldn't post that. Try again."); }
+  saving = false;
+  render();
+}
+async function deleteNote(id) {
+  if (!confirm('Delete your note?')) return;
+  try { poll = await rpc('delete_poll_comment', { p_code: code, p_voter_key: me, p_id: id }); lastWrite = Date.now(); render(); }
+  catch { alert("Couldn't delete that. Try again."); }
 }
 
 // ---- Suggest another place, with the app's filters ----
 // What's on today around the vote's places (or around you), filtered by time
 // of day, distance, kind of place, price and a search.
 let adding = false, nearby = null, here = null, shown = 12;
+// The vote's day when it's later than today ("Thursday?"), else null.
+const futureDay = () => (poll && poll.plan_day && poll.plan_day > localDate() ? poll.plan_day : null);
 const filters = { q: '', slot: '', mi: '5', cat: '', price: '', from: 'vote' };
 async function loadNearby(again) {
   if (!poll || (nearby && !again)) return;
@@ -319,7 +365,21 @@ async function loadNearby(again) {
   }
   if (!at) { nearby = []; render(); return; }
   nearby = null; render();
-  try { nearby = await rpc('deals_near_v3', { in_lat: at.lat, in_lng: at.lng, in_radius_m: Math.round(Number(filters.mi) * 1609.34) }); } catch { nearby = []; }
+  const radius = Math.round(Number(filters.mi) * 1609.34);
+  try {
+    const d = futureDay();
+    if (d) {
+      // A vote for a later day ("Thursday?"): that day's weekly specials and events, not what's on today.
+      const dow = new Date(d + 'T12:00:00').getDay();
+      const [ev, wk] = await Promise.all(['events', 'weekly'].map(k => rpc('deals_around', { in_lat: at.lat, in_lng: at.lng, in_radius_m: radius, in_kind: k })));
+      nearby = [...(ev || []), ...(wk || [])]
+        .filter(r => r.deal_type === 'recurring' ? (r.recurring_days || []).includes(dow) && (!r.valid_from || r.valid_from <= d) && (!r.valid_until || r.valid_until >= d)
+          : (r.valid_from || '') <= d && (r.valid_until || r.valid_from || '') >= d)
+        .map(r => ({ ...r, deal_id: r.id, business_name: r.businesses?.name, category: r.businesses?.category, price_level: r.businesses?.price_level, website: r.businesses?.website, phone: r.businesses?.phone }));
+    } else {
+      nearby = await rpc('deals_near_v3', { in_lat: at.lat, in_lng: at.lng, in_radius_m: radius });
+    }
+  } catch { nearby = []; }
   render();
 }
 // The same rules as the app's vote list: only somewhere the group could go
@@ -338,7 +398,7 @@ function goodPick(d) {
   if (HEALTH_TEXT.test(`${d.title || ''} ${d.business_name || ''}`)) return false;
   if (CATERING_TEXT.test(d.title || '') || CATERING_DESC.test(d.description || '')) return false;
   // Already over for today. An end time at or before the start (10pm to 1am) runs past midnight, so it isn't over.
-  if (d.end_time) {
+  if (d.end_time && !futureDay()) {
     const end = mins(d.end_time), start = d.start_time ? mins(d.start_time) : null;
     const pastMidnight = start != null ? end <= start : end < 300;
     if (!pastMidnight && nowMins() > end) return false;
@@ -382,8 +442,9 @@ function picksHtml() {
   let out = head
     + (cats.length ? `<div class="flabel">Kind of place</div>${chips('cat', [['', 'All'], ...cats.map(([k, l]) => [k, `${l} ${catCount[k]}`])])}` : '')
     + (base.filter(d => d.price_level).length >= 5 ? `<div class="flabel">Price</div>${chips('price', [['', 'Any'], ...prices.map(p => [p, p])])}` : '')
-    + `<p class="m" style="margin:4px 0 0">${list.length} ${list.length === 1 ? 'place' : 'places'} on today</p></div>`;
+    + `<p class="m" style="margin:4px 0 0">${list.length} ${list.length === 1 ? 'place' : 'places'} on ${futureDay() ? esc(day(futureDay())) : 'today'}</p></div>`;
   if (!list.length) return out + '<p class="sub">Nothing matches those filters. Try a wider distance or another time.</p>';
+
   out += list.slice(0, shown).map(d => {
     const k = 'p' + d.deal_id, showing = open.has(k);
     const mi = d.distance_m != null ? `${(d.distance_m / 1609.34).toFixed(d.distance_m < 1609 ? 1 : 0)} mi` : '';
@@ -430,7 +491,12 @@ async function addTime() {
   } catch (e) { alert(/6 times/.test(e.message) ? 'This vote already has 6 times.' : /two months/.test(e.message) ? 'Pick a day in the next two months.' : "Couldn't add that time. Try again."); }
 }
 
+// A refresh that started before your tap must not undo it on screen, and a
+// double tap sends one vote (a second toggle would really take it back).
+let saving = false, lastWrite = 0;
 async function vote(i) {
+  if (saving) return;
+  saving = true;
   const name = myName(true);
   const args = { p_code: code, p_voter_key: me, p_option: i, p_name: name };
   try {
@@ -440,6 +506,7 @@ async function vote(i) {
     render();
   }
   catch (e) { alert(/closed/.test(e.message) ? 'This vote has closed.' : "Couldn't save your vote. Try again."); }
+  finally { saving = false; lastWrite = Date.now(); }
 }
 
 async function setDown(on) {
@@ -449,9 +516,11 @@ async function setDown(on) {
 
 async function load() {
   if (!code) { render(); return; }
+  const startedAt = Date.now();
   let next;
   try { next = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { next = null; }
-  if (!next && poll) return;          // a missed refresh keeps what's showing
+  if (!next && poll) return;          // a dropped connection keeps what's showing
+  if (saving || lastWrite >= startedAt) return;   // don't undo a tap made meanwhile
   poll = next;
   // Don't redraw under someone typing (their name, a search, a time).
   const a = document.activeElement;
