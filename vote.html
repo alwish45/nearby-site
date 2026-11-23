@@ -60,6 +60,10 @@
   .chip.on { background:var(--ink); color:#faf8f4; border-color:var(--ink); }
   .chip .c { color:var(--muted); font-weight:600; }
   .chip.on .c { color:#d6d0c6; }
+  .chip.fit { border-color:#9fd8b0; }
+  .fit-line { color:#4a453d; font-size:13px; line-height:1.4; margin-top:4px; }
+  .mismatch { background:#fff6ed; border:1px solid #f6dcc2; border-radius:10px; padding:10px; margin-top:10px; font-size:13px; color:#4a453d; line-height:1.4; }
+  .mismatch b { color:#9a3412; font-size:14px; }
   .deal { display:inline-block; margin-top:6px; font-size:13px; font-weight:800; color:#9a3412; background:var(--soft); border-radius:999px; padding:3px 10px; }
 </style>
 </head>
@@ -102,14 +106,19 @@ let poll = null;
 // What kind of place each option is, its address and a line about it, read
 // once from the public deals list (the vote itself only stores the basics).
 let info = null;
+// Also each deal's weekdays, dates, times and the place's hours, to check
+// suggested times against. Options added later are looked up when they appear.
+const asked = new Set();
 async function loadInfo() {
-  if (info || !poll || !poll.options) return;
-  info = {};
+  if (!poll || !poll.options) return;
+  info = info || {};
+  const ids = poll.options.map(o => o.deal_id).filter(id => id && !asked.has(id));
+  if (!ids.length) return;
+  ids.forEach(id => asked.add(id));
   try {
-    const ids = poll.options.map(o => o.deal_id).filter(Boolean).join(',');
-    const r = await fetch(`${API.replace('rpc/', '')}deals?id=in.(${ids})&select=id,description,businesses(category,address,city)`, { headers: { apikey: KEY } });
+    const r = await fetch(`${API.replace('rpc/', '')}deals?id=in.(${ids.join(',')})&select=id,title,description,deal_type,recurring_days,valid_from,valid_until,start_time,end_time,businesses(category,address,city,hours)`, { headers: { apikey: KEY } });
     for (const d of (r.ok ? await r.json() : [])) info[d.id] = d;
-    render();
+    if (!addingTime && !['name', 'note', 'find'].includes(document.activeElement && document.activeElement.id)) render();
   } catch {}
 }
 const cap = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
@@ -169,7 +178,7 @@ function render() {
     }).join('')}
     ${poll.can_add ? `<button class="suggest" id="suggest">${adding ? 'Done' : '＋ Suggest another place'}</button>${adding ? picksHtml() : ''}` : ''}
     ${poll.how && !invite ? `<div class="box"><h2>How should we do it?</h2><div class="how">${[['dine_in', '🍽️ Dine in'], ['pickup', '🛍️ Pickup'], ['delivery', '🚗 Delivery']].map(([k, l]) => `<button data-how="${k}" class="${poll.my_how === k ? 'on' : ''}">${l}<b>${poll.how[k] || 0}</b></button>`).join('')}</div><div class="who">A head count for the group. Check with the place that it offers pickup or delivery.</div></div>` : ''}
-    ${whenHtml()}
+    ${whenHtml(invite ? 0 : win)}
     ${notesHtml(askName ? null : savedName, typedNote)}
     ${lead.length > 1 && !poll.closed ? '<p class="sub" style="text-align:center;color:#9a3412;font-weight:700">It’s a tie. One more vote settles it.</p>' : ''}
     ${go >= 0 ? `<div class="down">
@@ -192,6 +201,7 @@ function render() {
   app.querySelectorAll('[data-time]').forEach(b => b.addEventListener('click', () => toggleTime(Number(b.dataset.time))));
   document.getElementById('addtime')?.addEventListener('click', () => { addingTime = !addingTime; render(); });
   document.getElementById('savetime')?.addEventListener('click', addTime);
+  bindFitForm();
   document.getElementById('postnote')?.addEventListener('click', postNote);
   app.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => deleteNote(Number(b.dataset.del))));
 }
@@ -218,7 +228,151 @@ function sharedDate(os) {
   const d = os.length && os[0].valid_from;
   return d && d > isoDay(new Date()) && os.every(o => o.valid_from === d) ? d : null;
 }
-function whenHtml() {
+// Which places are on at a suggested day and time. The same rules as the
+// app's "Happening now" (deal-finder-v2 lib/hours.js and lib/voteTimes.js).
+const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const HOURS_RANGE = /(\d{1,2})(?::(\d{2}))?\s*([AP]\.?M\.?)?\s*(?:to|–|—|-)\s*(\d{1,2})(?::(\d{2}))?\s*([AP]\.?M\.?)/gi;
+const hm = (h, m, p) => (parseInt(h, 10) % 12 + (/^p/i.test(p) ? 12 : 0)) * 60 + parseInt(m || '0', 10);
+function parseHours(str) {
+  if (!str) return null;
+  if (/closed/i.test(str)) return { closed: true };
+  if (/24\s*hours/i.test(str)) return { allDay: true };
+  const ranges = [];
+  for (const m of str.matchAll(HOURS_RANGE)) {
+    const close = hm(m[4], m[5], m[6]);
+    let open = m[3] ? hm(m[1], m[2], m[3]) : hm(m[1], m[2], m[6]);
+    if (!m[3] && open > close) open = hm(m[1], m[2], /^p/i.test(m[6]) ? 'AM' : 'PM');
+    ranges.push({ open, close });
+  }
+  return ranges.length ? { ranges } : null;
+}
+const inSpan = (n, r) => (r.close < r.open ? n >= r.open || n <= r.close : n >= r.open && n <= r.close);
+// true open, false closed, null unknown.
+function openAt(hours, date) {
+  if (!Array.isArray(hours) || !hours.length) return null;
+  const n = date.getHours() * 60 + date.getMinutes();
+  const prev = parseHours(hours.find(h => h.day === WEEKDAYS[(date.getDay() + 6) % 7])?.hours);
+  if (prev?.ranges?.some(r => r.close < r.open && n <= r.close)) return true;
+  const p = parseHours(hours.find(h => h.day === WEEKDAYS[date.getDay()])?.hours);
+  if (!p) return null;
+  if (p.closed) return false;
+  if (p.allDay) return true;
+  return p.ranges.some(r => (r.close >= r.open ? inSpan(n, r) : n >= r.open));
+}
+const MEALS = [[/\bbrunch\b/i, 540, 870], [/\bbreakfast\b/i, 360, 660], [/\blunch\b/i, 660, 900]];
+function mealWindow(d) {
+  if (d.start_time || d.end_time || /all[- ]day|dinner|late night/i.test(d.title || '')) return null;
+  const m = MEALS.find(([re]) => re.test(d.title || ''));
+  return m ? { open: m[1], close: m[2] } : null;
+}
+function runsOnDate(d, date) {
+  const ds = isoDay(date);
+  if (d.valid_from && String(d.valid_from).slice(0, 10) > ds) return false;
+  if (d.valid_until && String(d.valid_until).slice(0, 10) < ds) return false;
+  const days = d.recurring_days;
+  return !(d.deal_type === 'recurring' && Array.isArray(days) && days.length && !days.map(Number).includes(date.getDay()));
+}
+const dateAt = (ds, t) => { const [y, mo, dd] = ds.split('-').map(Number); const [h, m] = t.split(':').map(Number); return new Date(y, mo - 1, dd, h, m || 0); };
+// An option with what the deals table knows about it.
+function timed(o) {
+  const d = info && info[o.deal_id];
+  if (!d) return o;
+  return { ...o, title: o.title || d.title, deal_type: d.deal_type, recurring_days: d.recurring_days, valid_from: d.valid_from, valid_until: d.valid_until,
+    start_time: d.start_time ?? o.start_time, end_time: d.end_time ?? o.end_time, hours: d.businesses?.hours || null };
+}
+// true on, false not on, null can't tell (no times and no hours listed).
+function onAt(d, ds, t) {
+  const date = dateAt(ds, t), n = mins(t);
+  const yest = new Date(date); yest.setDate(date.getDate() - 1);
+  const s0 = d.start_time ? mins(d.start_time) : null, e0 = d.end_time ? mins(d.end_time) : null;
+  // A show with only a start time: meeting up to an hour before counts.
+  if (s0 != null && e0 == null && runsOnDate(d, date) && n >= s0 - 60 && n < s0) return true;
+  const pastMidnight = s0 != null && e0 != null && e0 <= s0 && n <= e0;
+  const lateStart = s0 != null && e0 == null && n + 1440 <= s0 + 180;
+  if (!runsOnDate(d, pastMidnight || lateStart ? yest : date)) return false;
+  const status = openAt(d.hours, date), meal = mealWindow(d);
+  if (meal) return status !== false && inSpan(n, meal);
+  // At least half an hour left: 5pm isn't a time for a happy hour that ends at 5.
+  if (s0 != null && e0 != null) return inSpan(n, { open: s0, close: e0 }) && ((e0 - n + 1440) % 1440) >= 30;
+  if (s0 != null) return lateStart || (n >= s0 && n <= s0 + 180);
+  if (e0 != null && e0 >= 300 && n > e0) return false;
+  return status === null ? null : status;
+}
+const span = (a, b) => { const x = t12(a), y = t12(b); return x.slice(-2) === y.slice(-2) ? `${x.slice(0, -2)}–${y}` : `${x}–${y}`; };
+const toT = n => `${pad(Math.floor(n / 60) % 24)}:${pad(n % 60)}`;
+function whyOff(d, ds) {
+  const date = dateAt(ds, '12:00'), short = x => new Date(String(x).slice(0, 10) + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  if (!runsOnDate(d, date)) {
+    if (d.valid_from && d.valid_from === d.valid_until) return `only ${short(d.valid_from)}`;
+    if (d.valid_until && ds > String(d.valid_until).slice(0, 10)) return `ended ${short(d.valid_until)}`;
+    if (d.valid_from && ds < String(d.valid_from).slice(0, 10)) return `starts ${short(d.valid_from)}`;
+    return `not on ${WEEKDAYS[date.getDay()]}s`;
+  }
+  if (d.start_time && d.end_time) return span(d.start_time, d.end_time);
+  if (d.start_time) return `starts ${t12(d.start_time)}`;
+  const meal = mealWindow(d);
+  if (meal) return span(toT(meal.open), toT(meal.close));
+  if (d.end_time) return `until ${t12(d.end_time)}`;
+  return 'closed then';
+}
+const placeOf = o => o.business || o.title;
+function placesAt(ds, t) {
+  const r = { on: [], off: [], unknown: [] };
+  for (const o of (poll.options || []).map(timed)) {
+    const st = onAt(o, ds, t);
+    if (st === true) r.on.push(o); else if (st === false) r.off.push({ o, why: whyOff(o, ds) }); else r.unknown.push(o);
+  }
+  return r;
+}
+const fitLine = r => [r.on.length ? `✅ ${r.on.map(placeOf).join(', ')}` : '', r.off.length ? `❌ ${r.off.map(x => `${placeOf(x.o)} (${x.why})`).join(', ')}` : '',
+  r.unknown.length ? `❔ ${r.unknown.map(placeOf).join(', ')} (hours not listed)` : ''].filter(Boolean).join(' · ');
+// Up to 3 times that day when the most places are on.
+const TIME_CHOICES = Array.from({ length: 29 }, (_, i) => toT(480 + i * 30));
+function goodTimes(ds) {
+  const os = (poll.options || []).map(timed);
+  const scored = TIME_CHOICES.map((t, i) => { const names = os.filter(o => onAt(o, ds, t) === true).map(placeOf); return { t, i, on: names.length, names }; })
+    .filter(x => x.on).sort((a, b) => b.on - a.on || a.i - b.i);
+  // 90+ minutes apart, and not the same places again.
+  const picked = [];
+  for (const x of scored) { if (picked.length >= 3) break; if (!picked.some(p => Math.abs(p.i - x.i) < 3 || p.names.join() === x.names.join())) picked.push(x); }
+  return picked.sort((a, b) => a.i - b.i).map(x => ({ time: x.t, on: x.on, of: os.length, names: x.names }));
+}
+function nearestOn(o, ds, t) {
+  const ok = TIME_CHOICES.filter(c => onAt(o, ds, c) === true);
+  return ok.length ? ok.reduce((b, c) => (Math.abs(mins(c) - mins(t)) < Math.abs(mins(b) - mins(t)) ? c : b)) : null;
+}
+// Under the day and time pickers: times that fit, and who's on at the picked time.
+function fitFormHtml(ds, t) {
+  if (!ds || !t || !poll.options.length) return '';
+  const fits = goodTimes(ds), r = placesAt(ds, t);
+  const chips = fits.length ? `<div class="who" style="margin-top:8px">Times that fit the places</div><div class="chips" style="padding-top:4px">${fits.map(f =>
+    `<button class="chip fit ${f.time === t ? 'on' : ''}" data-fit="${f.time}">${esc(t12(f.time))} · ${esc(f.on === f.of ? (f.of === 1 ? 'on' : `all ${f.of} on`) : f.on <= 2 ? f.names.join(', ') : `${f.on} of ${f.of}`)}</button>`).join('')}</div>` : '';
+  const line = r.on.length || r.unknown.length ? fitLine(r) : `None of these places are on then (${r.off.map(x => `${placeOf(x.o)} ${x.why}`).join(', ')}). You can still suggest it.`;
+  return `${chips}<div class="fit-line">${esc(day(ds))} at ${esc(t12(t))}: ${esc(line)}</div>`;
+}
+function bindFitForm() {
+  const d = document.getElementById('tday'), t = document.getElementById('ttime'), box = document.getElementById('tfit');
+  if (!d || !t || !box) return;
+  const draw = () => {
+    box.innerHTML = fitFormHtml(d.value, t.value);
+    box.querySelectorAll('[data-fit]').forEach(b => b.addEventListener('click', () => { t.value = b.dataset.fit; draw(); }));
+  };
+  d.addEventListener('input', draw); t.addEventListener('input', draw);
+  draw();
+}
+// The place in the lead isn't on at the time in the lead.
+function mismatchHtml(win) {
+  const times = poll.times || [], counts = poll.time_counts || [], top = Math.max(0, ...counts);
+  const slot = times.length ? (top && counts.filter(n => n === top).length === 1 ? times[counts.indexOf(top)] : null) : planned();
+  if (win < 0 || !slot) return '';
+  const place = timed(poll.options[win]);
+  if (onAt(place, slot.day, slot.time) !== false) return '';
+  const near = nearestOn(place, slot.day, slot.time);
+  const others = poll.options.map(timed).filter((o, i) => i !== win && onAt(o, slot.day, slot.time) === true).map(placeOf);
+  return `<div class="mismatch"><b>⚠️ ${esc(placeOf(place))} isn’t on at ${esc(t12(slot.time))} (${esc(whyOff(place, slot.day))})</b>
+    ${near ? `<div>Closest time it’s on that day: ${esc(t12(near))}</div>` : ''}${others.length ? `<div>On at ${esc(t12(slot.time))}: ${esc(others.join(', '))}</div>` : ''}</div>`;
+}
+function whenHtml(win = -1) {
   if (!Array.isArray(poll.times)) return ''; // older database without time voting
   const times = poll.times, counts = poll.time_counts || [], mineT = poll.my_times || [];
   const plan = planned();
@@ -237,6 +391,7 @@ function whenHtml() {
       <span class="row"><span class="grow">
         <div class="t">🕒 ${esc(day(s.day))} · ${esc(t12(s.time))}</div>
         ${s.planned ? '<div class="who">The original plan</div>' : ''}
+        ${poll.options.length ? `<div class="fit-line">${esc(fitLine(placesAt(s.day, s.time)))}</div>` : ''}
         ${s.added_by ? `<div class="who">Suggested by ${esc(s.added_by)}</div>` : ''}
         ${names ? `<div class="who">${names}</div>` : ''}
       </span><span class="n">${n}${mineT.includes(i) ? ' ✓' : ''}</span></span>
@@ -250,15 +405,17 @@ function whenHtml() {
   const planCard = !times.length && (plan || planDay || starts.length) ? `<div class="opt mine plan" style="cursor:default"><span class="row"><span class="grow">
       <div class="t">📅 ${plan ? `${esc(day(plan.day))} · ${esc(t12(plan.time))}` : `${planDay ? esc(day(planDay)) : 'Today'} · ${starts.length ? 'times vary' : 'no time set'}`}</div>
       <div class="who">${plan ? 'The plan' : starts.length ? starts.map(o => `${esc(o.business || o.title)} ${esc(t12(o.start_time))}`).join(' · ') : 'The plan · suggest a time below'}</div>
+      ${plan && poll.options.length > 1 ? `<div class="fit-line">${esc(fitLine(placesAt(plan.day, plan.time)))}</div>` : ''}
     </span></span></div>` : '';
   const form = addingTime ? `<div class="how" style="margin-top:8px">
       <input id="tday" type="date" min="${today}" max="${last}" value="${esc(plan ? (plan.day < today ? today : plan.day) : poll.plan_day && poll.plan_day > today ? poll.plan_day : today)}" style="margin:0">
       <input id="ttime" type="time" step="900" value="${esc(plan ? plan.time : starts.length ? String(starts[0].start_time).slice(0, 5) : '19:00')}" style="margin:0">
-    </div><button class="downbtn" id="savetime">Add this time</button>` : '';
+    </div><div id="tfit"></div><button class="downbtn" id="savetime">Add this time</button>` : '';
   return `<div class="box"><h2>When works?</h2>
     ${intro ? `<p class="m" style="margin:0 0 10px">${intro}</p>` : ''}
     ${planCard}${rows}
     ${poll.can_add_time ? `<button class="suggest" id="addtime" style="margin:0">${addingTime ? 'Cancel' : '＋ Suggest another time'}</button>${form}` : ''}
+    ${mismatchHtml(win)}
   </div>`;
 }
 // One tap at a time, and a refresh already on its way can't undo it (as for votes).
