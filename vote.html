@@ -48,9 +48,14 @@
   .how button.on { background:var(--ink); color:#faf8f4; border-color:var(--ink); }
   .how b { display:block; font-size:18px; }
   .suggest { display:block; width:100%; font:inherit; font-weight:800; color:#c2410c; background:none; border:1.5px dashed var(--accent); border-radius:14px; padding:13px; margin:0 0 10px; cursor:pointer; }
-  .pick { display:flex; align-items:center; gap:10px; width:100%; text-align:left; font:inherit; color:inherit; background:#fff; border:1px dashed var(--line); border-radius:12px; padding:10px 12px; margin:0 0 8px; cursor:pointer; }
+  .pick { display:flex; align-items:center; gap:10px; width:100%; text-align:left; font:inherit; color:inherit; background:#fff; border:1px dashed var(--line); border-radius:12px; padding:10px 12px; margin:0 0 8px; }
   .pick { align-items:flex-start; border-style:solid; }
-  .pick .plus { color:var(--accent); font-weight:800; font-size:14px; white-space:nowrap; align-self:center; }
+  .pick .plus { font:inherit; color:var(--accent); font-weight:800; font-size:14px; white-space:nowrap; align-self:center; background:var(--soft); border:1.5px solid #f6dcc2; border-radius:999px; padding:8px 12px; cursor:pointer; }
+  .zoom-row { display:flex; align-items:center; gap:6px; }
+  .zoom-row .chips { flex:1; padding-bottom:4px; }
+  .zstep { flex:none; width:34px; height:34px; border-radius:50%; font:inherit; font-size:18px; font-weight:800; background:#fff; border:1.5px solid var(--line); cursor:pointer; }
+  .zstep:disabled { opacity:.35; cursor:default; }
+  .linkbtn { background:none; border:0; font:inherit; font-weight:800; color:#c2410c; padding:6px 0 0; cursor:pointer; text-align:left; }
   .pick .about { color:#2b2722; font-size:13px; line-height:1.35; margin-top:3px; }
   .thumb.icon { display:flex; align-items:center; justify-content:center; font-size:26px; background:var(--soft); }
   #find { display:block; width:100%; box-sizing:border-box; font:inherit; font-size:16px; border:1.5px solid var(--line); border-radius:12px; padding:11px 12px; margin:0 0 8px; background:#fff; }
@@ -118,7 +123,7 @@ async function loadInfo() {
   try {
     const r = await fetch(`${API.replace('rpc/', '')}deals?id=in.(${ids.join(',')})&select=id,title,description,deal_type,recurring_days,valid_from,valid_until,start_time,end_time,businesses(category,address,city,hours)`, { headers: { apikey: KEY } });
     for (const d of (r.ok ? await r.json() : [])) info[d.id] = d;
-    if (!addingTime && !['name', 'note', 'find'].includes(document.activeElement && document.activeElement.id)) render();
+    if (!addingTime && !['name', 'note', 'find', 'zday'].includes(document.activeElement && document.activeElement.id)) render();
   } catch {}
 }
 const cap = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
@@ -202,6 +207,7 @@ function render() {
   document.getElementById('addtime')?.addEventListener('click', () => { addingTime = !addingTime; render(); });
   document.getElementById('savetime')?.addEventListener('click', addTime);
   bindFitForm();
+  bindZoom(invite ? 0 : win);
   document.getElementById('postnote')?.addEventListener('click', postNote);
   app.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => deleteNote(Number(b.dataset.del))));
 }
@@ -360,10 +366,14 @@ function bindFitForm() {
   d.addEventListener('input', draw); t.addEventListener('input', draw);
   draw();
 }
+// The day and time the group is going: the time most people ticked, else the plan.
+function leadSlot() {
+  const times = poll.times || [], counts = poll.time_counts || [], top = Math.max(0, ...counts);
+  return times.length ? (top && counts.filter(n => n === top).length === 1 ? times[counts.indexOf(top)] : null) : planned();
+}
 // The place in the lead isn't on at the time in the lead.
 function mismatchHtml(win) {
-  const times = poll.times || [], counts = poll.time_counts || [], top = Math.max(0, ...counts);
-  const slot = times.length ? (top && counts.filter(n => n === top).length === 1 ? times[counts.indexOf(top)] : null) : planned();
+  const slot = leadSlot();
   if (win < 0 || !slot) return '';
   const place = timed(poll.options[win]);
   if (onAt(place, slot.day, slot.time) !== false) return '';
@@ -371,6 +381,69 @@ function mismatchHtml(win) {
   const others = poll.options.map(timed).filter((o, i) => i !== win && onAt(o, slot.day, slot.time) === true).map(placeOf);
   return `<div class="mismatch"><b>⚠️ ${esc(placeOf(place))} isn’t on at ${esc(t12(slot.time))} (${esc(whyOff(place, slot.day))})</b>
     ${near ? `<div>Closest time it’s on that day: ${esc(t12(near))}</div>` : ''}${others.length ? `<div>On at ${esc(t12(slot.time))}: ${esc(others.join(', '))}</div>` : ''}</div>`;
+}
+// Zero in on the time: start from the plan's day and time, see the half hours
+// around it (how many places are on, and whether the one in the lead is), step
+// earlier or later or to another day, then tick it if it's already suggested
+// or suggest it. The same as the app's plan card (lib/voteTimes.js timesAround).
+let zoom = null; // { day, center, time } while open
+const FIRST_T = 480, LAST_T = 1320; // 8am–10pm, the time picker's range
+function zoomStart(win) {
+  const today = isoDay(new Date()), slot = leadSlot(), shared = sharedDate(poll.options || []);
+  const voteDay = shared || (poll.plan_day && poll.plan_day >= today ? poll.plan_day : null);
+  const d = slot && slot.day >= today ? slot.day : voteDay || today;
+  const place = win >= 0 ? timed(poll.options[win]) : null;
+  const t = slot ? String(slot.time).slice(0, 5) : place && place.start_time ? String(place.start_time).slice(0, 5) : (goodTimes(d)[0] || {}).time || '19:00';
+  return { day: d, center: t, time: t };
+}
+function timesAround(ds, center, place) {
+  const os = (poll.options || []).map(timed), c = mins(center), cur = toT(c);
+  const list = new Set(TIME_CHOICES.filter(t => Math.abs(mins(t) - c) <= 90));
+  list.add(cur);
+  const near = place && onAt(place, ds, cur) === false ? nearestOn(place, ds, cur) : null;
+  if (near) list.add(near);
+  return [...list].sort((a, b) => mins(a) - mins(b)).map(t => ({ t, of: os.length, on: os.filter(o => onAt(o, ds, t) === true).length, placeOn: place ? onAt(place, ds, t) : null }));
+}
+function zoomHtml(win) {
+  if (poll.closed) return '';
+  if (!zoom) return '<button class="suggest" id="zoom" style="margin:10px 0 0">🎯 Zero in on the time · suggest another</button>';
+  const today = isoDay(new Date()), last = isoDay(new Date(Date.now() + 60 * 864e5));
+  const place = win >= 0 ? timed(poll.options[win]) : null, pname = place ? placeOf(place) : '';
+  const c = mins(zoom.center), r = placesAt(zoom.day, zoom.time);
+  const chips = timesAround(zoom.day, zoom.center, place).map(x => `<button class="chip ${x.placeOn === true ? 'fit' : ''} ${x.t === zoom.time ? 'on' : ''}" data-zt="${x.t}">${esc(t12(x.t))}${x.placeOn === true ? ' ✅' : x.placeOn === false ? ' ❌' : ''}${x.of > 1 ? ` · ${x.on}/${x.of}` : ''}</button>`).join('');
+  const near = place && onAt(place, zoom.day, zoom.time) === false ? nearestOn(place, zoom.day, zoom.time) : null;
+  const times = poll.times || [], mineT = poll.my_times || [];
+  const idx = times.findIndex(x => x.day === zoom.day && String(x.time).slice(0, 5) === zoom.time);
+  const slot = leadSlot(), isPlan = !times.length && slot && slot.day === zoom.day && String(slot.time).slice(0, 5) === zoom.time;
+  const action = idx >= 0 ? `<button class="downbtn ${mineT.includes(idx) ? 'on' : ''}" data-ztick="${idx}">${mineT.includes(idx) ? `✓ You ticked ${esc(t12(zoom.time))} (tap to undo)` : `Already suggested: tick ${esc(t12(zoom.time))}`}</button>`
+    : isPlan ? '<div class="who" style="margin-top:8px">That’s the plan now. Pick another time to suggest it.</div>'
+    : poll.can_add_time ? `<button class="downbtn" id="zadd">Suggest ${esc(day(zoom.day))} at ${esc(t12(zoom.time))}</button>`
+    : '<div class="who" style="margin-top:8px">This vote already has 6 times. Tick the ones that work above.</div>';
+  return `<div style="margin-top:10px">
+    <button class="suggest" id="zoom" style="margin:0 0 8px">Done</button>
+    <input id="zday" type="date" min="${today}" max="${last}" value="${esc(zoom.day)}" style="margin:0 0 6px">
+    <div class="who">${pname ? `✅ ${esc(pname)} is on · ❌ it isn’t · number of places on` : 'Number of places on at each time'}</div>
+    <div class="zoom-row"><button class="zstep" data-zstep="-120" ${c <= FIRST_T + 90 ? 'disabled' : ''} aria-label="Earlier times">‹</button>
+      <div class="chips">${chips}</div>
+      <button class="zstep" data-zstep="120" ${c >= LAST_T - 90 ? 'disabled' : ''} aria-label="Later times">›</button></div>
+    <div class="fit-line">${esc(day(zoom.day))} at ${esc(t12(zoom.time))}: ${esc(r.on.length || r.unknown.length ? fitLine(r) : 'none of these places are on then.')}</div>
+    ${near ? `<button class="linkbtn" data-zt="${near}" data-zcenter="1">Try ${esc(t12(near))}, the closest time ${esc(pname)} is on ›</button>` : ''}
+    ${action}
+  </div>`;
+}
+function bindZoom(win) {
+  document.getElementById('zoom')?.addEventListener('click', () => { zoom = zoom ? null : zoomStart(win); render(); });
+  if (!zoom) return;
+  const picked = app.querySelector('.zoom-row .chip.on'), row = picked && picked.parentElement;
+  if (row) row.scrollLeft = picked.offsetLeft - row.offsetLeft - (row.clientWidth - picked.offsetWidth) / 2;
+  app.querySelectorAll('[data-zt]').forEach(b => b.addEventListener('click', () => { zoom.time = b.dataset.zt; if (b.dataset.zcenter) zoom.center = b.dataset.zt; render(); }));
+  app.querySelectorAll('[data-zstep]').forEach(b => b.addEventListener('click', () => {
+    const c = Math.min(LAST_T - 90, Math.max(FIRST_T + 90, mins(zoom.center) + Number(b.dataset.zstep)));
+    zoom.center = toT(Math.round(c / 30) * 30); render();
+  }));
+  document.getElementById('zday')?.addEventListener('change', e => { if (e.target.value) { zoom.day = e.target.value; render(); } });
+  app.querySelectorAll('[data-ztick]').forEach(b => b.addEventListener('click', () => toggleTime(Number(b.dataset.ztick))));
+  document.getElementById('zadd')?.addEventListener('click', () => suggestTime(zoom.day, zoom.time));
 }
 function whenHtml(win = -1) {
   if (!Array.isArray(poll.times)) return ''; // older database without time voting
@@ -416,6 +489,7 @@ function whenHtml(win = -1) {
     ${planCard}${rows}
     ${poll.can_add_time ? `<button class="suggest" id="addtime" style="margin:0">${addingTime ? 'Cancel' : '＋ Suggest another time'}</button>${form}` : ''}
     ${mismatchHtml(win)}
+    ${zoomHtml(win)}
   </div>`;
 }
 // One tap at a time, and a refresh already on its way can't undo it (as for votes).
@@ -430,16 +504,19 @@ function toggleTime(i) {
     catch (e) { alert(/closed/.test(e.message) ? 'This vote has closed.' : "Couldn't save that. Try again."); }
   });
 }
-async function addTime() {
+function addTime() {
   const d = document.getElementById('tday').value, t = document.getElementById('ttime').value;
   if (!d || !t) { alert('Pick a day and a time.'); return; }
+  return suggestTime(d, t);
+}
+async function suggestTime(d, t) {
   const plan = planned();
   if (saving) return;
   saving = true;
   try {
     poll = await rpc('add_poll_time', { p_code: code, p_voter_key: me, p_day: d, p_time: t, p_name: myName(),
       p_planned_day: plan ? plan.day : null, p_planned_time: plan ? plan.time : null });
-    addingTime = false; render();
+    addingTime = false; zoom = null; render();
   } catch (e) {
     alert(/6 times/.test(e.message) ? 'This vote already has 6 times.' : /two months/.test(e.message) ? 'Pick a day in the next two months.' : "Couldn't add that time. Try again.");
   } finally { saving = false; lastWrite = Date.now(); }
@@ -554,11 +631,12 @@ function feedCard(d) {
   const about = d.description ? (d.description.length > 90 ? d.description.slice(0, 87).trimEnd() + '…' : d.description) : '';
   // The deal tag, unless it only repeats the title ("Sunday brunch specials").
   const tag = d.price_info && !/^\s*tickets\s*$/i.test(d.price_info) && d.price_info.toLowerCase() !== String(d.title || '').toLowerCase() ? `<span class="deal">${esc(d.price_info)}</span>` : '';
-  return `<button class="pick" data-id="${esc(d.deal_id)}">${img}<span class="grow">
+  // Only the ＋ Add button adds it: tapping the rest of the card does nothing.
+  return `<div class="pick">${img}<span class="grow">
     <div class="t">${esc(d.title)}</div>
     <div class="m">${esc([d.business_name, miles(d.distance_m), feedWhen(d)].filter(Boolean).join(' · '))}</div>
     ${about ? `<div class="about">${esc(about)}</div>` : ''}${tag}
-  </span><span class="plus">＋ Add</span></button>`;
+  </span><button class="plus" data-id="${esc(d.deal_id)}" aria-label="Add ${esc(d.title)} to the vote">＋ Add</button></div>`;
 }
 function feedBody() {
   const q = feed.q.trim().toLowerCase();
@@ -589,7 +667,7 @@ function picksHtml() {
 function bindFeed() {
   const body = document.getElementById('feedbody');
   if (!body) return;
-  body.querySelectorAll('.pick').forEach(b => b.addEventListener('click', () => addOption(b.dataset.id)));
+  body.querySelectorAll('.pick .plus').forEach(b => b.addEventListener('click', () => addOption(b.dataset.id)));
   body.querySelectorAll('[data-cat]').forEach(b => b.addEventListener('click', () => { feed.cat = b.dataset.cat; feed.shown = FEED_STEP; redrawFeed(); }));
   body.querySelectorAll('[data-mi]').forEach(b => b.addEventListener('click', () => { feed.mi = Number(b.dataset.mi); feed.shown = FEED_STEP; redrawFeed(); }));
   body.querySelectorAll('[data-slot]').forEach(b => b.addEventListener('click', () => { feed.slot = b.dataset.slot; feed.shown = FEED_STEP; redrawFeed(); }));
@@ -639,8 +717,9 @@ function myName() {
   return n || null;
 }
 function addOption(id) {
-  return once(async () => { try { poll = await rpc('add_poll_option', { p_code: code, p_voter_key: me, p_deal_id: id, p_name: myName() }); adding = false; info = null; render(); loadInfo(); }
-  catch (e) { alert(/full/.test(e.message) ? 'This vote already has 6 options.' : "Couldn't add that. Try again."); } });
+  // The list stays open so several places can be added in a row (up to 12 in all).
+  return once(async () => { try { poll = await rpc('add_poll_option', { p_code: code, p_voter_key: me, p_deal_id: id, p_name: myName() }); if (!poll.can_add) adding = false; render(); loadInfo(); }
+  catch (e) { alert(/full/.test(e.message) ? 'This vote already has 12 options.' : "Couldn't add that. Try again."); } });
 }
 function setHow(how) {
   return once(async () => { try { poll = await rpc('set_how', { p_code: code, p_voter_key: me, p_how: how }); render(); }
@@ -685,7 +764,7 @@ async function load() {
   if (saving || lastWrite >= startedAt) return;
   if (fresh !== undefined) poll = fresh;
   // Don't redraw under someone typing their name, a note or a search, or picking a time.
-  if (!addingTime && !['name', 'note', 'find'].includes(document.activeElement && document.activeElement.id)) render();
+  if (!addingTime && !['name', 'note', 'find', 'zday'].includes(document.activeElement && document.activeElement.id)) render();
   loadInfo();
 }
 load();
