@@ -190,6 +190,9 @@ function whenHtml() {
   const times = poll.times, counts = poll.time_counts || [], mineT = poll.my_times || [];
   const plan = planned();
   if (!times.length && poll.closed) return '';
+  const today = isoDay(new Date()), last = isoDay(new Date(Date.now() + 60 * 864e5));
+  const planDay = poll.plan_day && poll.plan_day >= today ? poll.plan_day : null;
+  const starts = plan ? [] : (poll.options || []).filter(o => o.start_time);
   const topT = Math.max(0, ...counts);
   const people = poll.time_people || 0;
   const rows = times.map((s, i) => {
@@ -207,15 +210,20 @@ function whenHtml() {
   }).join('');
   const intro = times.length
     ? (poll.closed ? '' : 'Tap every time you can make.')
-    : plan ? `The plan is ${esc(day(plan.day))} at ${esc(t12(plan.time))}. Can’t make it? Suggest another time.` : 'No time picked yet. Suggest one.';
-  const today = isoDay(new Date()), last = isoDay(new Date(Date.now() + 60 * 864e5));
+    : plan || planDay || starts.length ? 'Can’t make it? Suggest another time.' : 'No time picked yet. Suggest one.';
+  // What's already planned, before anyone suggests another time: the vote's
+  // day and time, or its day and each place's own start time.
+  const planCard = !times.length && (plan || planDay || starts.length) ? `<div class="opt mine" style="cursor:default"><span class="row"><span class="grow">
+      <div class="t">📅 ${plan ? `${esc(day(plan.day))} · ${esc(t12(plan.time))}` : `${planDay ? esc(day(planDay)) : 'Today'} · ${starts.length ? 'times vary' : 'no time set'}`}</div>
+      <div class="who">${plan ? 'The plan' : starts.length ? starts.map(o => `${esc(o.business || o.title)} ${esc(t12(o.start_time))}`).join(' · ') : 'The plan · suggest a time below'}</div>
+    </span></span></div>` : '';
   const form = addingTime ? `<div class="how" style="margin-top:8px">
       <input id="tday" type="date" min="${today}" max="${last}" value="${esc(plan ? (plan.day < today ? today : plan.day) : poll.plan_day && poll.plan_day > today ? poll.plan_day : today)}" style="margin:0">
-      <input id="ttime" type="time" step="900" value="${esc(plan ? plan.time : '19:00')}" style="margin:0">
+      <input id="ttime" type="time" step="900" value="${esc(plan ? plan.time : starts.length ? String(starts[0].start_time).slice(0, 5) : '19:00')}" style="margin:0">
     </div><button class="downbtn" id="savetime">Add this time</button>` : '';
   return `<div class="box"><h2>When works?</h2>
     ${intro ? `<p class="m" style="margin:0 0 10px">${intro}</p>` : ''}
-    ${rows}
+    ${planCard}${rows}
     ${poll.can_add_time ? `<button class="suggest" id="addtime" style="margin:0">${addingTime ? 'Cancel' : '＋ Suggest another time'}</button>${form}` : ''}
   </div>`;
 }
