@@ -39,8 +39,8 @@
   .more { color:var(--muted); font-size:13px; margin:-4px 2px 12px; line-height:1.4; }
   .more a { color:#c2410c; font-weight:700; text-decoration:none; white-space:nowrap; }
   .box { background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:14px; margin:0 0 10px; }
-  .note { text-align:left; border-top:1px solid var(--line); padding:9px 0; font-size:15px; line-height:1.4; overflow-wrap:anywhere; }
-  .note .del { background:none; border:0; font:inherit; font-size:12px; color:var(--muted); cursor:pointer; padding:0 0 0 6px; }
+  .cnote { text-align:left; border-top:1px solid var(--line); padding:9px 0; font-size:15px; line-height:1.4; overflow-wrap:anywhere; }
+  .cnote .del { background:none; border:0; font:inherit; font-size:12px; color:var(--muted); cursor:pointer; padding:0 0 0 6px; }
   textarea#note { display:block; width:100%; box-sizing:border-box; font:inherit; font-size:16px; border:1.5px solid var(--line); border-radius:12px; padding:12px; margin-top:8px; resize:vertical; }
   .box h2 { font-size:13px; letter-spacing:.6px; text-transform:uppercase; color:var(--muted); margin:0 0 8px; }
   .how { display:flex; gap:8px; }
@@ -191,7 +191,7 @@ function render() {
         const o = poll.options[i];
         const n = poll.counts[i] || 0, pct = people && !fixed ? Math.min(100, Math.round(n / people * 100)) : 0;
         const names = poll.voters.filter(v => v.option === i).map(v => esc(v.name)).join(', ');
-        const when = [o.valid_from ? day(o.valid_from) : '', o.start_time ? t12(o.start_time) : ''].filter(Boolean).join(' ');
+        const when = [o.valid_from && o.valid_from > isoDay(new Date()) ? day(o.valid_from) : '', o.start_time ? t12(o.start_time) : ''].filter(Boolean).join(' ');
         const img = /^https:\/\//.test(o.image_url || '') ? `<img class="thumb" src="${esc(o.image_url)}" alt="" loading="lazy" onerror="this.remove()">` : '';
         const deal = o.price_info && !/^\s*tickets\s*$/i.test(o.price_info) ? `<span class="deal">${esc(o.price_info)}</span>` : '';
         const fit = p && p.time ? onAt(timed(o), pday, p.time) : null;
@@ -213,7 +213,7 @@ function render() {
       return head + opts + sug;
     }).join('')}
     ${parted ? nightHtml(partWin, people) : ''}
-    ${poll.how && !invite ? `<div class="box"><h2>How should we do it?</h2><div class="how">${[['dine_in', '🍽️ Dine in'], ['pickup', '🛍️ Pickup'], ['delivery', '🚗 Delivery']].map(([k, l]) => `<button data-how="${k}" class="${poll.my_how === k ? 'on' : ''}">${l}<b>${poll.how[k] || 0}</b></button>`).join('')}</div><div class="who">A head count for the group. Check with the place that it offers pickup or delivery.</div></div>` : ''}
+    ${poll.how && !invite && !parted ? `<div class="box"><h2>How should we do it?</h2><div class="how">${[['dine_in', '🍽️ Dine in'], ['pickup', '🛍️ Pickup'], ['delivery', '🚗 Delivery']].map(([k, l]) => `<button data-how="${k}" class="${poll.my_how === k ? 'on' : ''}">${l}<b>${poll.how[k] || 0}</b></button>`).join('')}</div><div class="who">A head count for the group. Check with the place that it offers pickup or delivery.</div></div>` : ''}
     ${parted ? '' : whenHtml(invite ? 0 : win)}
     ${notesHtml(askName ? null : savedName, typedNote)}
     ${lead.length > 1 && !parted && !poll.closed ? '<p class="sub" style="text-align:center;color:#9a3412;font-weight:700">It’s a tie. One more vote settles it.</p>' : ''}
@@ -739,7 +739,7 @@ function notesHtml(name, typed) {
   const open = !(poll.closed && new Date(poll.closes_at).getTime() < Date.now() - 864e5);
   const ago = at => { const m = Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 60000));
     return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} hr ago` : day(String(at).slice(0, 10)); };
-  const rows = list.map(c => `<div class="note"><div><b>${c.mine ? 'You' : esc(c.name)}</b> <span class="who">${esc(ago(c.at))}</span>${c.mine ? ` <button class="del" data-del="${Number(c.id)}">Delete</button>` : ''}</div><div>${esc(c.body)}</div></div>`).join('');
+  const rows = list.map(c => `<div class="cnote"><div><b>${c.mine ? 'You' : esc(c.name)}</b> <span class="who">${esc(ago(c.at))}</span>${c.mine ? ` <button class="del" data-del="${Number(c.id)}">Delete</button>` : ''}</div><div>${esc(c.body)}</div></div>`).join('');
   return `<div class="box"><h2>💬 Notes${list.length ? ' · ' + list.length : ''}</h2>
     ${list.length ? rows : '<p class="m" style="margin:0 0 8px">Anything the group should know? “I can only do after 7”, “Sapa needs a reservation”…</p>'}
     ${open ? `${name === '' ? '<input id="name" maxlength="30" placeholder="Your name (so friends know who wrote it)" style="margin:8px 0 0">' : ''}
