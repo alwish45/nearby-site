@@ -51,6 +51,15 @@
   .pick { display:flex; align-items:center; gap:10px; width:100%; text-align:left; font:inherit; color:inherit; background:#fff; border:1px dashed var(--line); border-radius:12px; padding:10px 12px; margin:0 0 8px; }
   .pick { align-items:flex-start; border-style:solid; }
   .pick .plus { font:inherit; color:var(--accent); font-weight:800; font-size:14px; white-space:nowrap; align-self:center; background:var(--soft); border:1.5px solid #f6dcc2; border-radius:999px; padding:8px 12px; cursor:pointer; }
+  .part-head { display:flex; align-items:center; gap:8px; margin:14px 0 8px; }
+  .pnum { width:24px; height:24px; border-radius:50%; background:var(--accent); color:#fff; font-weight:800; font-size:14px; display:inline-flex; align-items:center; justify-content:center; flex:none; }
+  .pname { flex:1; font-size:18px; font-weight:800; text-align:left; }
+  .pstate { font-size:14px; font-weight:700; color:#9a3412; }
+  .off { color:#b4441c; font-size:13px; font-weight:700; margin-top:3px; }
+  .on { color:#1f7a3d; font-size:13px; font-weight:700; margin-top:3px; }
+  .night-row { display:flex; gap:10px; text-align:left; border-top:1px solid var(--line); padding:9px 0; }
+  .night-row a { color:#c2410c; font-weight:700; text-decoration:none; }
+  .night-row .ntime { width:62px; flex:none; font-weight:800; color:#c2410c; }
   .zoom-row { display:flex; align-items:center; gap:6px; }
   .zoom-row .chips { flex:1; padding-bottom:4px; }
   .zstep { flex:none; width:34px; height:34px; border-radius:50%; font:inherit; font-size:18px; font-weight:800; background:#fff; border:1.5px solid var(--line); cursor:pointer; }
@@ -142,7 +151,7 @@ function render() {
   const top = total ? Math.max(...poll.counts) : 0;
   // A tie has no leader yet: no trophy and no directions until someone breaks it.
   const lead = total ? poll.counts.map((n, i) => (n === top ? i : -1)).filter(i => i >= 0) : [];
-  const win = lead.length === 1 ? lead[0] : -1;
+  const win = lead.length === 1 && !(poll.parts || []).length ? lead[0] : -1;
   // Newer database: several picks each (my_votes), people counted once
   // (voter_count). Older: one pick each (my_vote).
   const multi = Array.isArray(poll.my_votes);
@@ -158,37 +167,59 @@ function render() {
   // Keep a note that's typed but not posted yet across the refresh.
   const typedNote = document.getElementById('note')?.value || '';
   const askName = (invite ? !poll.i_am_down : !voted) && !poll.closed;
+  const parted = (poll.parts || []).length > 0;
+  const pday = poll.plan_day && poll.plan_day >= isoDay(new Date()) ? poll.plan_day : isoDay(new Date());
+  const sections = parted ? poll.parts.map((p, pi) => ({ p, pi, idxs: poll.options.map((o, i) => (o.part === pi ? i : -1)).filter(i => i >= 0) }))
+    : [{ p: null, pi: null, idxs: poll.options.map((_, i) => i) }];
+  const partWin = parted ? sections.map(({ idxs }) => {
+    if (idxs.length === 1) return idxs[0];
+    const t = Math.max(0, ...idxs.map(i => poll.counts[i] || 0)), l = idxs.filter(i => (poll.counts[i] || 0) === t);
+    return t > 0 && l.length === 1 ? l[0] : -1;
+  }) : [];
   app.innerHTML = `
     <h1>${esc(poll.title || (invite ? 'Who’s in?' : 'Where should we go?'))}</h1>
     <p class="sub">${invite
       ? (poll.closed ? 'This invite has closed.' : 'Tap “I’m down” if you’re in. No app needed.')
-      : `${poll.closed ? 'This vote has closed.' : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
+      : `${poll.closed ? 'This vote has closed.' : (poll.parts || []).length ? 'Plan the night together: in each part, tap every place you’d be happy with.' : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
     ${askName ? `<input id="name" maxlength="30" placeholder="Your name (so friends know who${invite ? '’s in' : ' voted'})" value="${esc(savedName)}">` : ''}
-    ${poll.options.map((o, i) => {
-      const n = poll.counts[i] || 0, pct = people ? Math.min(100, Math.round(n / people * 100)) : 0;
-      const names = poll.voters.filter(v => v.option === i).map(v => esc(v.name)).join(', ');
-      const when = [o.valid_from ? day(o.valid_from) : '', o.start_time ? t12(o.start_time) : ''].filter(Boolean).join(' ');
-      const img = /^https:\/\//.test(o.image_url || '') ? `<img class="thumb" src="${esc(o.image_url)}" alt="" loading="lazy" onerror="this.remove()">` : '';
-      const deal = o.price_info && !/^\s*tickets\s*$/i.test(o.price_info) ? `<span class="deal">${esc(o.price_info)}</span>` : '';
-      return `<button class="opt ${mine.includes(i) ? 'mine' : ''}" data-i="${i}" ${poll.closed || invite ? 'disabled' : ''}>
-        <span class="bar ${total && n === top ? 'win' : ''}" style="width:${pct}%"></span>
+    ${sections.map(({ p, pi, idxs }) => {
+      // A plan ("Dinner → Drinks"): each part has its own places and winner.
+      const w = p ? partWin[pi] : win, secTop = Math.max(0, ...idxs.map(i => poll.counts[i] || 0));
+      const fixed = !!p && idxs.length === 1;
+      const head = p ? `<div class="part-head"><span class="pnum">${pi + 1}</span><span class="pname">${esc(p.name)}${p.time ? ` · ${esc(t12(p.time))}` : ''}</span><span class="pstate">${fixed ? '📌 Set' : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span></div>` : '';
+      const opts = idxs.map(i => {
+        const o = poll.options[i];
+        const n = poll.counts[i] || 0, pct = people && !fixed ? Math.min(100, Math.round(n / people * 100)) : 0;
+        const names = poll.voters.filter(v => v.option === i).map(v => esc(v.name)).join(', ');
+        const when = [o.valid_from ? day(o.valid_from) : '', o.start_time ? t12(o.start_time) : ''].filter(Boolean).join(' ');
+        const img = /^https:\/\//.test(o.image_url || '') ? `<img class="thumb" src="${esc(o.image_url)}" alt="" loading="lazy" onerror="this.remove()">` : '';
+        const deal = o.price_info && !/^\s*tickets\s*$/i.test(o.price_info) ? `<span class="deal">${esc(o.price_info)}</span>` : '';
+        const fit = p && p.time ? onAt(timed(o), pday, p.time) : null;
+        const fitLn = fit === false ? `<div class="off">❌ Not on at ${esc(t12(p.time))} (${esc(whyOff(timed(o), pday))})</div>` : fit === true && !fixed ? `<div class="on">✅ On at ${esc(t12(p.time))}</div>` : '';
+        return `<button class="opt ${mine.includes(i) ? 'mine' : ''}" data-i="${i}" ${poll.closed || invite || fixed ? 'disabled' : ''}>
+        <span class="bar ${secTop && n === secTop ? 'win' : ''}" style="width:${pct}%"></span>
         <span class="row">${img}<span class="grow">
-          <div class="t">${i === win ? '🏆 ' : ''}${esc(o.title)}</div>
+          <div class="t">${i === w && !fixed ? '🏆 ' : ''}${esc(o.title)}</div>
           <div class="m">${esc([o.business, o.city, when].filter(Boolean).join(' · '))}</div>
-          ${deal}
+          ${deal}${fitLn}
           ${o.added_by ? `<div class="who">Suggested by ${esc(o.added_by)}</div>` : ''}
           ${names ? `<div class="who">${names}</div>` : ''}
-        </span>${invite ? '' : `<span class="n">${n}${mine.includes(i) ? ' ✓' : ''}</span>`}</span>
+        </span>${invite || fixed ? '' : `<span class="n">${n}${mine.includes(i) ? ' ✓' : ''}</span>`}</span>
       </button>${more(o)}`;
+      }).join('');
+      const open = adding && addPart === pi;
+      const sug = poll.can_add && (!p || idxs.length < 6)
+        ? `<button class="suggest" data-suggest="${pi ?? ''}">${open ? 'Done' : p ? `＋ Suggest a place for ${esc(p.name.toLowerCase())}` : '＋ Suggest another place'}</button>${open ? picksHtml() : ''}` : '';
+      return head + opts + sug;
     }).join('')}
-    ${poll.can_add ? `<button class="suggest" id="suggest">${adding ? 'Done' : '＋ Suggest another place'}</button>${adding ? picksHtml() : ''}` : ''}
+    ${parted ? nightHtml(partWin, people) : ''}
     ${poll.how && !invite ? `<div class="box"><h2>How should we do it?</h2><div class="how">${[['dine_in', '🍽️ Dine in'], ['pickup', '🛍️ Pickup'], ['delivery', '🚗 Delivery']].map(([k, l]) => `<button data-how="${k}" class="${poll.my_how === k ? 'on' : ''}">${l}<b>${poll.how[k] || 0}</b></button>`).join('')}</div><div class="who">A head count for the group. Check with the place that it offers pickup or delivery.</div></div>` : ''}
-    ${whenHtml(invite ? 0 : win)}
+    ${parted ? '' : whenHtml(invite ? 0 : win)}
     ${notesHtml(askName ? null : savedName, typedNote)}
-    ${lead.length > 1 && !poll.closed ? '<p class="sub" style="text-align:center;color:#9a3412;font-weight:700">It’s a tie. One more vote settles it.</p>' : ''}
-    ${go >= 0 ? `<div class="down">
+    ${lead.length > 1 && !parted && !poll.closed ? '<p class="sub" style="text-align:center;color:#9a3412;font-weight:700">It’s a tie. One more vote settles it.</p>' : ''}
+    ${go >= 0 || parted ? `<div class="down">
       <h2>${(poll.down || []).length ? `🙌 ${poll.down.length} ${poll.down.length === 1 ? 'person is' : 'people are'} down` : 'Who’s down?'}</h2>
-      <div class="m">${(poll.down || []).length ? esc(poll.down.join(', ')) : `Tap if you’re in for ${esc(poll.options[go].business || 'the winner')}.`}</div>
+      <div class="m">${(poll.down || []).length ? esc(poll.down.join(', ')) : parted ? 'Tap if you’re in for the night.' : `Tap if you’re in for ${esc(poll.options[go].business || 'the winner')}.`}</div>
       <button class="downbtn ${poll.i_am_down ? 'on' : ''}" id="downbtn">${poll.i_am_down ? '✓ You’re down (tap to undo)' : 'I’m down 🙌'}</button>
     </div>` : ''}
     ${go >= 0 && poll.options[go].lat ? `<a class="cta" href="https://maps.google.com/?daddr=${poll.options[go].lat},${poll.options[go].lng}">Directions to ${invite ? '' : 'the leader: '}${esc(poll.options[go].business)}</a>` : ''}
@@ -196,7 +227,11 @@ function render() {
   // Only the places (data-i); time rows and the plan card share the .opt look.
   app.querySelectorAll('.opt[data-i]').forEach(b => b.addEventListener('click', () => vote(Number(b.dataset.i))));
   document.getElementById('downbtn')?.addEventListener('click', () => setDown(!poll.i_am_down));
-  document.getElementById('suggest')?.addEventListener('click', () => { adding = !adding; if (adding) loadNearby(); render(); });
+  app.querySelectorAll('[data-suggest]').forEach(b => b.addEventListener('click', () => {
+    const pi = b.dataset.suggest === '' ? null : Number(b.dataset.suggest);
+    if (adding && addPart === pi) adding = false; else { adding = true; addPart = pi; feed.q = ''; loadNearby(); }
+    render();
+  }));
   app.querySelectorAll('[data-how]').forEach(b => b.addEventListener('click', () => setHow(b.dataset.how)));
   bindFeed();
   const find = document.getElementById('find');
@@ -210,6 +245,23 @@ function render() {
   bindZoom(invite ? 0 : win);
   document.getElementById('postnote')?.addEventListener('click', postNote);
   app.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => deleteNote(Number(b.dataset.del))));
+}
+
+// A plan's night: each part's time and the place in the lead, with directions.
+function nightHtml(winners, people) {
+  const today = isoDay(new Date()), pday = poll.plan_day && poll.plan_day >= today ? poll.plan_day : today;
+  const rows = poll.parts.map((p, pi) => {
+    const w = winners[pi], o = w >= 0 ? poll.options[w] : null, t = o ? timed(o) : null;
+    const off = t && p.time && onAt(t, pday, p.time) === false;
+    const near = off ? nearestOn(t, pday, p.time) : null;
+    return `<div class="night-row"><span class="ntime">${p.time ? esc(t12(p.time)) : '—'}</span><span class="grow">
+      <div class="t">${esc(p.name)}: ${o ? esc(o.business || o.title) : 'tied or still voting'}</div>
+      ${off ? `<div class="off">⚠️ Not on at ${esc(t12(p.time))} (${esc(whyOff(t, pday))})${near ? `. Closest: ${esc(t12(near))}` : ''}</div>` : ''}
+      ${o && o.lat ? `<a href="https://maps.google.com/?daddr=${o.lat},${o.lng}" target="_blank" rel="noopener">Directions ›</a>` : ''}
+    </span></div>`;
+  }).join('');
+  return `<div class="box"><h2>🌃 Your night · ${pday === today ? 'Tonight' : esc(day(pday))}</h2>${rows}
+    <div class="who" style="margin-top:6px">${winners.every(w => w >= 0) ? 'Every part has a winner.' : 'Each part’s winner shows here as friends vote.'}</div></div>`;
 }
 
 // When works? Friends tap every day and time they can make, or suggest another.
@@ -523,7 +575,7 @@ async function suggestTime(d, t) {
 }
 
 // Suggest another place: what's on near the first option, on the vote's day.
-let adding = false, nearby = null;
+let adding = false, addPart = null, nearby = null; // addPart: the plan part a place is being suggested for
 // The vote's day when it's later than today ("Thursday?"), else null.
 const futureDay = () => (poll && poll.plan_day && poll.plan_day > isoDay(new Date()) ? poll.plan_day : null);
 async function loadNearby() {
@@ -605,7 +657,7 @@ function slotOk(d, slot) {
 }
 const findText = d => `${d.title || ''} ${d.business_name || ''} ${d.category || ''} ${tagsOf(d).join(' ')} ${d.price_info || ''} ${d.description || ''}`.toLowerCase();
 function feedPool() {
-  const have = new Set(poll.options.map(o => o.deal_id));
+  const have = new Set(poll.options.filter(o => addPart == null || o.part === addPart).map(o => o.deal_id));
   return nearby.filter(d => !have.has(d.deal_id) && goodPick(d));
 }
 function feedIcon(d) {
@@ -718,8 +770,10 @@ function myName() {
 }
 function addOption(id) {
   // The list stays open so several places can be added in a row (up to 12 in all).
-  return once(async () => { try { poll = await rpc('add_poll_option', { p_code: code, p_voter_key: me, p_deal_id: id, p_name: myName() }); if (!poll.can_add) adding = false; render(); loadInfo(); }
-  catch (e) { alert(/full/.test(e.message) ? 'This vote already has 12 options.' : "Couldn't add that. Try again."); } });
+  return once(async () => { try { const args = { p_code: code, p_voter_key: me, p_deal_id: id, p_name: myName() };
+    if ((poll.parts || []).length) args.p_part = addPart;
+    poll = await rpc('add_poll_option', args); if (!poll.can_add) adding = false; render(); loadInfo(); }
+  catch (e) { alert(/part is full/.test(e.message) ? 'That part already has 6 places.' : /full/.test(e.message) ? 'This vote is full.' : "Couldn't add that. Try again."); } });
 }
 function setHow(how) {
   return once(async () => { try { poll = await rpc('set_how', { p_code: code, p_voter_key: me, p_how: how }); render(); }
