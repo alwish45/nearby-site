@@ -51,8 +51,21 @@
   .pick { display:flex; align-items:center; gap:10px; width:100%; text-align:left; font:inherit; color:inherit; background:#fff; border:1px dashed var(--line); border-radius:12px; padding:10px 12px; margin:0 0 8px; }
   .pick { align-items:flex-start; border-style:solid; }
   .pick .plus { font:inherit; color:var(--accent); font-weight:800; font-size:14px; white-space:nowrap; align-self:center; background:var(--soft); border:1.5px solid #f6dcc2; border-radius:999px; padding:8px 12px; cursor:pointer; }
+  .detbtn { font:inherit; font-size:13px; font-weight:800; color:#c2410c; background:#fff6ec; border:1px solid #f6dcc2; border-radius:999px; padding:3px 10px; margin-right:8px; cursor:pointer; }
+  .details { background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:12px; margin:-6px 0 14px; text-align:left; }
+  .details img { width:100%; max-height:180px; object-fit:cover; border-radius:10px; margin-bottom:8px; }
+  .drow { display:flex; gap:8px; font-size:14px; margin-top:6px; line-height:1.4; }
+  .dlinks { display:flex; flex-wrap:wrap; gap:8px; margin-top:10px; }
+  .dlinks a { font-weight:800; font-size:14px; color:#c2410c; text-decoration:none; background:#fff6ec; border:1px solid #f6dcc2; border-radius:999px; padding:6px 12px; }
+  .namecard { background:#fff6ec; border:1.5px solid #f6dcc2; border-radius:14px; padding:12px; margin:0 0 12px; text-align:left; }
+  .namecard .namerow { margin-top:8px; }
+  .askname { position:fixed; inset:0; background:rgba(20,17,13,.45); display:flex; align-items:flex-end; justify-content:center; z-index:50; }
+  .askname .sheet { background:#faf8f4; width:100%; max-width:520px; border-radius:18px 18px 0 0; padding:18px 16px 22px; text-align:left; }
+  .askname .t { font-size:19px; font-weight:800; }
+  .askname input { margin:12px 0 0; width:100%; box-sizing:border-box; }
   .summary { background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:12px; margin:0 0 12px; text-align:left; }
   .summary b { font-size:16px; }
+  .summary .linkbtn { display:block; }
   .final { background:#eefaf1; border:1.5px solid #9fd8b0; border-radius:14px; padding:14px; margin:0 0 12px; text-align:left; }
   .final h2 { color:#14532d; margin:0 0 4px; }
   .final .stop { margin-top:8px; }
@@ -148,20 +161,55 @@ async function loadInfo() {
   if (!ids.length) return;
   ids.forEach(id => asked.add(id));
   try {
-    const r = await fetch(`${API.replace('rpc/', '')}deals?id=in.(${ids.join(',')})&select=id,title,description,deal_type,recurring_days,valid_from,valid_until,start_time,end_time,businesses(category,address,city,hours)`, { headers: { apikey: KEY } });
+    const r = await fetch(`${API.replace('rpc/', '')}deals?id=in.(${ids.join(',')})&select=id,title,description,price_info,image_url,deal_type,recurring_days,valid_from,valid_until,start_time,end_time,businesses(category,address,city,hours,phone,website,menu_url,google_rating,google_rating_count,price_level,logo_url)`, { headers: { apikey: KEY } });
     for (const d of (r.ok ? await r.json() : [])) info[d.id] = d;
     if (!addingTime && !['name', 'note', 'find', 'zday'].includes(document.activeElement && document.activeElement.id)) render();
   } catch {}
 }
 const cap = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
-function more(o) {
+// Details open under a place (by option index): what the deal is, when it runs,
+// address, today's hours, phone, website, menu, rating and the map.
+const openDetails = new Set();
+const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const linkOf = u => (/^https?:\/\//i.test(u || '') ? u : u ? `https://${u}` : '');
+function detailsHtml(o, i) {
+  const d = (info && info[o.deal_id]) || {}, b = d.businesses || {};
+  const days = (d.recurring_days || o.recurring_days || []).map(Number);
+  const st = d.start_time || o.start_time, en = d.end_time || o.end_time;
+  const when = [
+    (d.deal_type || o.deal_type) === 'recurring' ? (!days.length || days.length === 7 ? 'Every day' : days.map(x => WD[x]).join(', ')) : (d.valid_from || o.valid_from) ? day(String(d.valid_from || o.valid_from).slice(0, 10)) + ((d.valid_until || o.valid_until) && (d.valid_until || o.valid_until) !== (d.valid_from || o.valid_from) ? ` – ${day(String(d.valid_until || o.valid_until).slice(0, 10))}` : '') : '',
+    st ? `${t12(st)}${en ? '–' + t12(en) : ''}` : '',
+  ].filter(Boolean).join(' · ');
+  const todayName = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'][utahNow().getDay()];
+  const hours = Array.isArray(b.hours) ? (b.hours.find(h => h.day === todayName) || {}).hours : '';
+  const img = /^https:\/\//.test(d.image_url || o.image_url || '') ? `<img src="${esc(d.image_url || o.image_url)}" alt="" loading="lazy" onerror="this.remove()">` : '';
+  const row = (icon, html) => (html ? `<div class="drow"><span>${icon}</span><span>${html}</span></div>` : '');
+  const maps = o.lat ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([o.business, b.address].filter(Boolean).join(', '))}` : '';
+  return `<div class="details" id="det-${i}">${img}
+    <div class="t">${esc(o.title)}</div>
+    ${d.price_info || o.price_info ? `<span class="deal">${esc(d.price_info || o.price_info)}</span>` : ''}
+    ${d.description ? `<p class="m" style="margin:8px 0">${esc(d.description)}</p>` : ''}
+    ${row('🕒', esc(when))}
+    ${row('📍', esc([o.business, b.address || o.city].filter(Boolean).join(' · ')))}
+    ${row('🚪', hours ? `Today: ${esc(hours)}` : '')}
+    ${row('⭐', b.google_rating ? `${esc(String(b.google_rating))}${b.google_rating_count ? ` (${esc(String(b.google_rating_count))} reviews)` : ''}${b.price_level ? ' · ' + esc(b.price_level) : ''}` : b.price_level ? esc(b.price_level) : '')}
+    <div class="dlinks">
+      ${maps ? `<a href="${maps}" target="_blank" rel="noopener">🗺️ Map</a>` : ''}
+      ${b.phone ? `<a href="tel:${esc(String(b.phone).replace(/[^0-9+]/g, ''))}">📞 Call</a>` : ''}
+      ${b.website ? `<a href="${esc(linkOf(b.website))}" target="_blank" rel="noopener">🌐 Website</a>` : ''}
+      ${b.menu_url ? `<a href="${esc(linkOf(b.menu_url))}" target="_blank" rel="noopener">📋 Menu</a>` : ''}
+    </div>
+  </div>`;
+}
+function more(o, i) {
   const d = (info && info[o.deal_id]) || {}, b = d.businesses || {};
   const street = /\d/.test(b.address || '') ? b.address.split(',')[0] : '';
   const where = [cap(b.category), street || o.city].filter(Boolean).join(' · ');
   const about = d.description ? esc(d.description.length > 150 ? d.description.slice(0, 147).trimEnd() + '…' : d.description) : '';
   const map = o.lat ? `<a href="https://maps.google.com/?q=${encodeURIComponent(o.business || '')}&ll=${o.lat},${o.lng}" target="_blank" rel="noopener">Map ›</a>` : '';
-  if (!where && !about && !map) return '';
-  return `<div class="more">${where ? '📍 ' + esc(where) : ''}${where && map ? ' · ' : ''}${map}${about ? `<br>${about}` : ''}</div>`;
+  const open = i != null && openDetails.has(i);
+  const toggle = i != null ? `<button class="detbtn" data-det="${i}" aria-expanded="${open}">${open ? 'Hide details ▴' : 'Details ▾'}</button>` : '';
+  return `<div class="more">${toggle}${where ? '📍 ' + esc(where) : ''}${where && map ? ' · ' : ''}${map}${about && !open ? `<br>${about}` : ''}</div>${open ? detailsHtml(o, i) : ''}`;
 }
 function render() {
   if (!poll) { app.innerHTML = '<h1>Vote not found</h1><p class="sub">The link may be incomplete. Ask your friend to send it again.</p>'; return; }
@@ -209,7 +257,8 @@ function render() {
       : `${poll.closed ? 'This vote has closed.' : (poll.parts || []).length ? 'Plan the night together: in each part, tap every place you’d be happy with.' : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
     ${pastDay ? `<p class="off" style="text-align:left">This was for ${esc(day(poll.plan_day))}.</p>` : ''}
     ${!poll.closed && !final && poll.closes_at ? `<p class="who" style="text-align:left;margin:-4px 0 8px">Voting closes ${esc(new Date(poll.closes_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Denver' }))}</p>` : ''}
-    ${askName ? `<div class="namerow"><input id="name" maxlength="30" placeholder="Your name, so friends know who’s who" value="${esc(savedName)}"><button id="savename">Save</button></div><div style="height:10px"></div>`
+    ${askName ? `<div class="namecard"><div class="t">👋 What’s your name?</div><div class="m">So your friends know who voted and who’s in.</div>
+      <div class="namerow"><input id="name" maxlength="30" autocomplete="given-name" placeholder="Your first name" value="${esc(savedName)}"><button id="savename">Save</button></div></div>`
       : !poll.closed && savedName ? `<p class="voting-as">Voting as <b>${esc(savedName)}</b> · <button id="chname">Change</button></p>` : ''}
     ${final ? finalHtml(final) : !invite && !(parted && sections.every(x => x.idxs.length === 1)) ? summaryHtml(sections, partWin, win, lead, mine, people) : ''}
     ${sections.map(({ p, pi, idxs }) => {
@@ -236,7 +285,7 @@ function render() {
           ${o.added_by ? `<div class="who">Suggested by ${esc(o.added_by)}</div>` : ''}
           ${names ? `<div class="who">${names}</div>` : ''}
         </span>${invite || fixed ? '' : `<span class="n">${n}${mine.includes(i) ? ' ✓' : ''}</span>`}</span>
-      </button>${more(o)}`;
+      </button>${more(o, i)}`;
       }).join('');
       const open = adding && addPart === pi;
       const sug = poll.can_add && !final && (!p || idxs.length < 6)
@@ -264,6 +313,11 @@ function render() {
   document.getElementById('name')?.addEventListener('input', e => { try { if (e.target.value.trim()) localStorage.setItem('nearby.name', e.target.value.trim()); } catch {} });
   document.getElementById('chname')?.addEventListener('click', () => { nameAsk = true; render(); document.getElementById('name')?.focus(); });
   document.getElementById('ics')?.addEventListener('click', downloadIcs);
+  app.querySelectorAll('[data-det]').forEach(b => b.addEventListener('click', () => { const i = Number(b.dataset.det); if (openDetails.has(i)) openDetails.delete(i); else openDetails.add(i); render(); }));
+  app.querySelectorAll('[data-det-go]').forEach(b => b.addEventListener('click', () => {
+    const i = Number(b.dataset.detGo); openDetails.add(i); render();
+    document.getElementById(`det-${i}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }));
   app.querySelectorAll('[data-suggest]').forEach(b => b.addEventListener('click', () => {
     const pi = b.dataset.suggest === '' ? null : Number(b.dataset.suggest);
     if (adding && addPart === pi) adding = false; else { adding = true; addPart = pi; feed.q = ''; loadNearby(); }
@@ -842,7 +896,38 @@ function setHow(how) {
 // A refresh that started before your tap must not undo it on screen, and a
 // double tap sends one vote (a second toggle would really take it back).
 let saving = false, lastWrite = 0;
+// First tap with no name: ask for one first (or vote without, once).
+let nameSkipped = false;
+function askNameFirst() {
+  if (myName() || nameSkipped || poll.closed) return Promise.resolve(true);
+  return new Promise(resolve => {
+    const box = document.createElement('div');
+    box.className = 'askname';
+    box.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="askname-t">
+      <div class="t" id="askname-t">👋 First, what’s your name?</div>
+      <div class="m">So friends see who voted. You only need to do this once.</div>
+      <input id="askname-in" maxlength="30" autocomplete="given-name" placeholder="Your first name">
+      <button class="downbtn" id="askname-ok">Save and vote</button>
+      <button class="linkbtn" id="askname-skip" style="display:block;margin:10px auto 0">Vote without a name</button></div>`;
+    document.body.appendChild(box);
+    const input = box.querySelector('#askname-in');
+    setTimeout(() => input.focus(), 50);
+    const done = ok => { box.remove(); resolve(ok); };
+    box.querySelector('#askname-ok').addEventListener('click', () => {
+      const n = input.value.trim();
+      if (!n) { input.focus(); return; }
+      try { localStorage.setItem('nearby.name', n); } catch {}
+      nameAsk = false; done(true);
+    });
+    input.addEventListener('keydown', e => { if (e.key === 'Enter') box.querySelector('#askname-ok').click(); });
+    box.querySelector('#askname-skip').addEventListener('click', () => { nameSkipped = true; done(true); });
+    box.addEventListener('click', e => { if (e.target === box) done(false); });
+  });
+}
+
 async function vote(i) {
+  if (saving) return;
+  if (!(await askNameFirst())) return;
   if (saving) return;
   saving = true;
   // The typed name, or the one saved earlier (the box is gone once it's saved).
@@ -877,7 +962,8 @@ function saveName() {
   return once(async () => { try { poll = await rpc('set_poll_name', { p_code: code, p_voter_key: me, p_name: n }); } catch { /* older database */ } render(); });
 }
 // In / Maybe / Can't make it (tap your answer again to take it back).
-function setRsvp(st) {
+async function setRsvp(st) {
+  if (!(await askNameFirst())) return;
   return once(async () => {
     const next = poll.my_rsvp === st ? null : st;
     if (nameAsk && myName()) nameAsk = false;
@@ -901,7 +987,8 @@ function summaryHtml(sections, partWin, win, lead, mine, people) {
   if ((poll.parts || []).length) line = poll.parts.map((p, pi) => `${p.name}: ${partWin[pi] >= 0 ? placeName(poll.options[partWin[pi]]) : poll.counts.some(n => n) ? 'tied' : '—'}`).join(' · ');
   else line = !people ? 'No votes yet. Tap every place you’d be happy with.' : win >= 0 ? `🏆 ${placeName(poll.options[win])} leads · ${poll.counts[win]} of ${people}` : lead.length > 1 ? `Tied: ${lead.map(i => placeName(poll.options[i])).join(', ')}` : 'No votes yet';
   const you = !(poll.parts || []).length && mine.length ? `<div class="who">You picked ${esc(mine.map(i => placeName(poll.options[i])).join(', '))}</div>` : '';
-  return `<div class="summary"><b>${esc(line)}</b>${you}</div>`;
+  const lookAt = win >= 0 ? `<button class="linkbtn" data-det-go="${win}">See ${esc(placeName(poll.options[win]))}’s details ›</button>` : '';
+  return `<div class="summary"><b>${esc(line)}</b>${you}${lookAt}</div>`;
 }
 // The plan is set: where, when, directions, add to calendar.
 function finalHtml(f) {
