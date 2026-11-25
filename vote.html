@@ -292,6 +292,7 @@ function render() {
         ? `<button class="suggest" data-suggest="${pi ?? ''}">${open ? 'Done' : p ? `＋ Suggest a place for ${esc(p.name.toLowerCase())}` : '＋ Suggest another place'}</button>${open ? picksHtml() : ''}` : '';
       return head + opts + sug;
     }).join('')}
+    ${stopHtml()}
     ${parted ? nightHtml(final ? final.parts : partWin, people, !!final, pastDay) : ''}
     ${poll.how && !invite && !parted && !final && foodVote() ? `<div class="box"><h2>How should we do it?</h2><div class="how">${[['dine_in', '🍽️ Dine in'], ['pickup', '🛍️ Pickup'], ['delivery', '🚗 Delivery']].map(([k, l]) => `<button data-how="${k}" class="${poll.my_how === k ? 'on' : ''}" ${fullyClosed ? 'disabled' : ''}>${l}<b>${poll.how[k] || 0}</b></button>`).join('')}</div><div class="who">A head count for the group. Check with the place that it offers pickup or delivery.</div></div>` : ''}
     ${parted || final ? '' : whenHtml(invite ? 0 : win)}
@@ -319,7 +320,8 @@ function render() {
     document.getElementById(`det-${i}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }));
   app.querySelectorAll('[data-suggest]').forEach(b => b.addEventListener('click', () => {
-    const pi = b.dataset.suggest === '' ? null : Number(b.dataset.suggest);
+    const v = b.dataset.suggest;
+    const pi = v === '' ? null : v === 'before' || v === 'after' ? v : Number(v);
     if (adding && addPart === pi) adding = false; else { adding = true; addPart = pi; feed.q = ''; loadNearby(); }
     render();
   }));
@@ -770,7 +772,8 @@ function slotOk(d, slot) {
 }
 const findText = d => `${d.title || ''} ${d.business_name || ''} ${d.category || ''} ${tagsOf(d).join(' ')} ${d.price_info || ''} ${d.description || ''}`.toLowerCase();
 function feedPool() {
-  const have = new Set(poll.options.filter(o => addPart == null || o.part === addPart).map(o => o.deal_id));
+  // A new stop before or after: nothing already in the vote.
+  const have = new Set(poll.options.filter(o => addPart == null || isStop(addPart) || o.part === addPart).map(o => o.deal_id));
   return nearby.filter(d => !have.has(d.deal_id) && goodPick(d));
 }
 function feedIcon(d) {
@@ -881,7 +884,52 @@ function myName() {
   try { if (n) localStorage.setItem('nearby.name', n); else n = localStorage.getItem('nearby.name') || ''; } catch {}
   return n || null;
 }
+// Something before or after: a new stop ahead of the plan or after it. A vote
+// without parts becomes a plan, its places the main part. The database picks
+// the new stop's time (an hour and a half before, two hours after).
+const isStop = v => v === 'before' || v === 'after';
+const STOP_KINDS = [[/music|comedy|theater|theatre|sports|concert|karaoke|trivia/, 'Show'], [/happy hour/, 'Happy hour'], [/drinks|wine|beer|cocktail|bar/, 'Drinks'], [/dessert|ice cream|bakery|coffee/, 'Dessert'], [/brunch|breakfast/, 'Brunch'], [/food/, 'Dinner']];
+function stopKind(d) {
+  const text = `${tagsOf(d).join(' ')} ${String(d.category || '').toLowerCase()}`;
+  return (STOP_KINDS.find(([re]) => re.test(text)) || [])[1] || null;
+}
+function stopHtml() {
+  const parts = poll.parts || [];
+  if (!poll.can_add || poll.final || poll.closed || parts.length >= 4) return '';
+  const btn = (w, label) => `<button class="chip ${adding && addPart === w ? 'on' : ''}" data-suggest="${w}" aria-pressed="${adding && addPart === w}">${adding && addPart === w ? 'Done' : label}</button>`;
+  return `<div class="box"><h2>${parts.length ? 'Add to the night' : 'Make a night of it'}</h2>
+    <div class="m">Suggest somewhere to go first or after${parts.length ? '' : '. The vote becomes a plan with a stop before or after'}.</div>
+    <div class="chips" style="margin-top:8px">${btn('before', '⬆️ Before')}${btn('after', '⬇️ After')}</div>
+    ${adding && isStop(addPart) ? picksHtml() : ''}</div>`;
+}
+function addStop(id, where) {
+  return once(async () => { try {
+    const d = (nearby || []).find(x => x.deal_id === id) || {};
+    const kinds = poll.options.map(o => stopKind({ ...o, ...((info && info[o.deal_id]) || {}) }));
+    const parts = poll.parts || [];
+    const slot = parts.length ? null : leadSlot();
+    // Aim an hour and a half before (two hours after) the plan; if the place is
+    // off then, the closest time it's on that's still before (after) it.
+    const base = parts.length ? (where === 'before' ? parts[0] : parts[parts.length - 1]).time : slot && slot.time ? String(slot.time).slice(0, 5) : null;
+    let time = null;
+    if (base) {
+      const m = Math.min(Math.max(mins(base) + (where === 'before' ? -90 : 120), 360), 1410);
+      time = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+      const ds = poll.plan_day && poll.plan_day >= planToday() ? poll.plan_day : isoDay(utahNow());
+      if (d.deal_id && onAt(d, ds, time) === false) {
+        const near = nearestOn(d, ds, time);
+        if (near && (where === 'before' ? mins(near) < mins(base) : mins(near) > mins(base))) time = near;
+      }
+    }
+    poll = await rpc('add_poll_stop', { p_code: code, p_voter_key: me, p_deal_id: id, p_where: where, p_name: myName(),
+      p_stop_name: stopKind(d) || (where === 'before' ? 'Before' : 'After'), p_stop_time: time,
+      p_main_name: kinds.length && kinds.every(k => k && k === kinds[0]) ? kinds[0] : null,
+      p_main_time: slot && slot.time ? String(slot.time).slice(0, 5) : null });
+    adding = false; render(); loadInfo(); }
+  catch (e) { alert(/could not find the function/i.test(e.message) ? 'Adding a stop before or after isn’t switched on yet.' : /4 parts/.test(e.message) ? 'This plan already has 4 stops.' : /full/.test(e.message) ? 'This vote is full.' : /plan is set/.test(e.message) ? 'The plan is set, so it can’t change now.' : "Couldn't add that. Try again."); } });
+}
 function addOption(id) {
+  if (isStop(addPart)) return addStop(id, addPart);
   // The list stays open so several places can be added in a row (up to 12 in all).
   return once(async () => { try { const args = { p_code: code, p_voter_key: me, p_deal_id: id, p_name: myName() };
     if ((poll.parts || []).length) args.p_part = addPart;
