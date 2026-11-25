@@ -163,7 +163,7 @@ async function loadInfo() {
   try {
     const r = await fetch(`${API.replace('rpc/', '')}deals?id=in.(${ids.join(',')})&select=id,title,description,price_info,image_url,deal_type,recurring_days,valid_from,valid_until,start_time,end_time,businesses(category,address,city,hours,phone,website,menu_url,google_rating,google_rating_count,price_level,logo_url)`, { headers: { apikey: KEY } });
     for (const d of (r.ok ? await r.json() : [])) info[d.id] = d;
-    if (!addingTime && !['name', 'note', 'find', 'zday'].includes(document.activeElement && document.activeElement.id)) render();
+    if (!addingTime && !['name', 'note', 'find', 'zday', 'phone'].includes(document.activeElement && document.activeElement.id)) render();
   } catch {}
 }
 const cap = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
@@ -314,6 +314,10 @@ function render() {
   document.getElementById('name')?.addEventListener('input', e => { try { if (e.target.value.trim()) localStorage.setItem('nearby.name', e.target.value.trim()); } catch {} });
   document.getElementById('chname')?.addEventListener('click', () => { nameAsk = true; render(); document.getElementById('name')?.focus(); });
   document.getElementById('ics')?.addEventListener('click', downloadIcs);
+  document.getElementById('textopen')?.addEventListener('click', () => { phoneOpen = true; render(); document.getElementById('phone')?.focus(); });
+  document.getElementById('textstop')?.addEventListener('click', () => setTexts(null));
+  document.getElementById('textme')?.addEventListener('click', () => { const v = document.getElementById('phone')?.value || ''; if (v.replace(/\D/g, '').length >= 10) setTexts(v); else document.getElementById('phone')?.focus(); });
+  document.getElementById('phone')?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('textme')?.click(); });
   app.querySelectorAll('[data-det]').forEach(b => b.addEventListener('click', () => { const i = Number(b.dataset.det); if (openDetails.has(i)) openDetails.delete(i); else openDetails.add(i); render(); }));
   app.querySelectorAll('[data-det-go]').forEach(b => b.addEventListener('click', () => {
     const i = Number(b.dataset.detGo); openDetails.add(i); render();
@@ -861,7 +865,23 @@ function notesHtml(name, typed) {
     ${open ? `${name === '' ? '<input id="name" maxlength="30" placeholder="Your name (so friends know who wrote it)" style="margin:8px 0 0">' : ''}
       <textarea id="note" maxlength="300" rows="2" placeholder="Add a note">${esc(typed)}</textarea>
       <button class="downbtn" id="postnote" style="margin-top:6px">Post</button>` : ''}
+    ${open ? textsHtml() : ''}
   </div>`;
+}
+// Texts for new notes: add a US number to get a text when someone else leaves
+// a note (newer database: get_poll has my_text).
+let phoneOpen = false;
+function textsHtml() {
+  if (!('my_text' in poll)) return '';
+  if (poll.my_text) return `<p class="who" style="margin:10px 0 0">📱 Texting ···${esc(poll.my_text)} when someone leaves a note · <button class="linkbtn" id="textstop">Stop</button></p>`;
+  if (!phoneOpen) return `<button class="linkbtn" id="textopen" style="margin-top:10px">📱 Text me when someone leaves a note</button>`;
+  const typed = document.getElementById('phone')?.value || '';
+  return `<div class="namerow" style="margin-top:10px"><input id="phone" type="tel" maxlength="20" autocomplete="tel" placeholder="Your phone number" value="${esc(typed)}"><button id="textme">Text me</button></div>
+    <p class="who" style="margin:6px 0 0">We’ll text you when someone else leaves a note on this vote. US numbers only. Msg &amp; data rates may apply. Reply STOP to stop.</p>`;
+}
+function setTexts(phone) {
+  return once(async () => { try { poll = await rpc('set_poll_text', { p_code: code, p_voter_key: me, p_phone: phone }); phoneOpen = false; lastWrite = Date.now(); render(); }
+  catch (e) { alert(/could not find the function/i.test(e.message) ? 'Texts aren’t switched on yet.' : /US phone/.test(e.message) ? 'Enter a US phone number.' : /today/.test(e.message) ? 'That’s a lot of numbers today. Try again tomorrow.' : /too many numbers/.test(e.message) ? 'This vote has too many numbers already.' : "Couldn't save that. Try again."); } });
 }
 async function postNote() {
   const el = document.getElementById('note');
@@ -1091,7 +1111,7 @@ async function load() {
   if (saving || lastWrite >= startedAt) return;
   if (fresh !== undefined) poll = fresh;
   // Don't redraw under someone typing their name, a note or a search, or picking a time.
-  if (!addingTime && !['name', 'note', 'find', 'zday'].includes(document.activeElement && document.activeElement.id)) render();
+  if (!addingTime && !['name', 'note', 'find', 'zday', 'phone'].includes(document.activeElement && document.activeElement.id)) render();
   loadInfo();
 }
 load();
