@@ -208,6 +208,7 @@ function render() {
       ? (poll.closed ? 'This invite has closed.' : 'Tap “I’m down” if you’re in. No app needed.')
       : `${poll.closed ? 'This vote has closed.' : (poll.parts || []).length ? 'Plan the night together: in each part, tap every place you’d be happy with.' : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
     ${pastDay ? `<p class="off" style="text-align:left">This was for ${esc(day(poll.plan_day))}.</p>` : ''}
+    ${!poll.closed && !final && poll.closes_at ? `<p class="who" style="text-align:left;margin:-4px 0 8px">Voting closes ${esc(new Date(poll.closes_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Denver' }))}</p>` : ''}
     ${askName ? `<div class="namerow"><input id="name" maxlength="30" placeholder="Your name, so friends know who’s who" value="${esc(savedName)}"><button id="savename">Save</button></div><div style="height:10px"></div>`
       : !poll.closed && savedName ? `<p class="voting-as">Voting as <b>${esc(savedName)}</b> · <button id="chname">Change</button></p>` : ''}
     ${final ? finalHtml(final) : !invite && !(parted && sections.every(x => x.idxs.length === 1)) ? summaryHtml(sections, partWin, win, lead, mine, people) : ''}
@@ -230,7 +231,7 @@ function render() {
         <span class="bar ${secTop && n === secTop ? 'win' : ''}" style="width:${pct}%"></span>
         <span class="row">${img}<span class="grow">
           <div class="t">${isFinal ? '✅ ' : i === w && !fixed && !final ? '🏆 ' : ''}${esc(o.title)}</div>
-          <div class="m">${esc([o.business, o.city, when].filter(Boolean).join(' · '))}</div>
+          <div class="m">${esc([o.business, o.category ? cap(o.category) : '', o.price_level || '', o.city, when].filter(Boolean).join(' · '))}</div>
           ${deal}${fitLn}
           ${o.added_by ? `<div class="who">Suggested by ${esc(o.added_by)}</div>` : ''}
           ${names ? `<div class="who">${names}</div>` : ''}
