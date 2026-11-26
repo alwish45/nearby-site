@@ -1302,9 +1302,12 @@ function stepsHtml(sections, mine, final, invite, parted, rsvpShown) {
   if (final) {
     if (rsvpShown && !poll.my_rsvp) steps.push(['in', 'Tell everyone if you’re coming', false]);
   } else {
+    // One place and "Are you in?": that's the one thing to answer. The day and
+    // time are still there to tick below, under Help shape it.
+    const justIn = invite && rsvpShown;
     // Only when the page asks which day (a one-day plan without a set day).
-    if (parted && Array.isArray(poll.times) && !multiDay()) steps.push(['day', 'Tick every day you could do', (poll.my_times || []).length > 0]);
-    if (parted && 'part_times' in poll) {
+    if (!justIn && parted && Array.isArray(poll.times) && !multiDay()) steps.push(['day', 'Tick every day you could do', (poll.my_times || []).length > 0]);
+    if (!justIn && parted && 'part_times' in poll) {
       const timed = sections.filter(x => x.p && x.p.time);
       const ticked = x => (poll.part_times || []).some(r => r.part === x.pi && r.mine);
       if (timed.length) {
