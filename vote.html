@@ -154,8 +154,8 @@
 <main>
   <div class="logo">near<span>.</span>by</div>
   <div id="app"><p class="sub">Loading the vote…</p></div>
-  <a class="cta orange" id="getapp" href="https://apps.apple.com/us/app/id6812937568">Get near.by: see what's happening near you</a>
-  <p class="note">Happy hours, specials and events nearby, plus votes like this one.</p>
+  <a class="cta orange" id="getapp" href="https://apps.apple.com/us/app/id6812937568">Make your own plan on near.by</a>
+  <p class="note">Pick things happening nearby, invite your friends, settle it together and go. Free.</p>
 </main>
 <script>
 // Friends vote here without the app or an account. Talks to the public
@@ -327,7 +327,7 @@ function render() {
     ${!poll.closed && !poll.final ? '<button class="linkbtn" id="invitemore" style="display:block;margin:2px 0 8px">👋 Invite more friends</button>' : ''}
     <p class="sub">${invite
       ? (poll.closed ? 'This invite has closed.' : 'Tap “I’m down” if you’re in. No app needed.')
-      : `${poll.closed ? 'This vote has closed.' : final ? 'The plan is set. Say if you’re in below.' : (poll.parts || []).length ? 'Tap everything you’d be happy with. The most popular pick wins each stop. No app needed.' : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
+      : `${poll.closed ? 'This vote has closed.' : final ? 'The plan is set. Say if you’re in below.' : (poll.parts || []).length ? 'Help shape this plan: tick the times that work, vote on places, suggest your own and comment on any time. No app needed.' : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
     ${pastDay ? `<p class="off" style="text-align:left">This was for ${esc(day(planDayOf()))}.</p>` : ''}
     ${!poll.closed && !final && poll.closes_at ? `<p class="who" style="text-align:left;margin:-4px 0 8px">Voting closes ${esc(new Date(poll.closes_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Denver' }))}</p>` : ''}
     ${askName ? `<div class="namecard"><div class="t">👋 What’s your name?</div><div class="m">So your friends know who voted and who’s in.</div>
