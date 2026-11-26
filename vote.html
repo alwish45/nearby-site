@@ -810,8 +810,8 @@ function goodPick(d) {
 }
 // Suggest another place: a feed you can narrow, like the app's picker.
 // Search, what kind, how far (from the vote's first place) and what time.
-const PICK_CATS = [['', 'All', '⭐'], ['happy hour', 'Happy hour', '🍻'], ['drinks', 'Drinks', '🍸'], ['food', 'Food', '🍽️'], ['brunch', 'Brunch', '🌅'],
-  ['music', 'Live music', '🎵'], ['sports', 'Sports', '🏈'], ['trivia', 'Trivia', '🎯'], ['comedy', 'Comedy', '😂'], ['theater', 'Theater', '🎭'],
+const PICK_CATS = [['', 'All', '⭐'], ['food', 'Food', '🍽️'], ['music', 'Live music', '🎵'], ['trivia', 'Trivia', '🎯'], ['comedy', 'Comedy', '😂'],
+  ['theater', 'Theater', '🎭'], ['sports', 'Sports', '🏈'], ['brunch', 'Brunch', '🌅'], ['happy hour', 'Happy hour', '🍻'], ['drinks', 'Drinks', '🍸'],
   ['pizza', 'Pizza', '🍕'], ['taco', 'Tacos', '🌮'], ['sushi', 'Sushi', '🍱'], ['burger', 'Burgers', '🍔'], ['family', 'Family', '🎈'], ['outdoor', 'Outdoors', '🌳'], ['free', 'Free', '🆓']];
 // The same kinds the app matches by place type or title, not only tags.
 const FOOD_KIND = { pizza: [/pizza|\bslices?\b/i, ['pizza']], taco: [/tacos?\b|burrito|enchilada|nachos|quesadilla/i, ['mexican']], sushi: [/sushi|sashimi|\bpoke\b|\brolls?\b/i, ['sushi']], burger: [/burger/i, []] };
@@ -870,7 +870,7 @@ function feedPool() {
 function feedIcon(d) {
   const t = tagsOf(d), has = k => t.some(x => x.includes(k));
   return has('music') ? '🎵' : has('sports') ? '🏈' : has('trivia') || has('games') ? '🎯' : has('comedy') ? '😂' : has('theater') ? '🎭'
-    : has('happy hour') || has('drinks') || has('wine') ? '🍻' : has('brunch') ? '🌅' : has('food') ? '🍽️' : has('family') || has('kids') ? '🎈' : '📍';
+    : has('brunch') ? '🌅' : has('food') && !DRINK_TITLE.test(d.title || '') ? '🍽️' : has('happy hour') || has('drinks') || has('wine') ? '🍻' : has('food') ? '🍽️' : has('family') || has('kids') ? '🎈' : '📍';
 }
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function feedWhen(d) {
@@ -1163,10 +1163,19 @@ function stepsHtml(sections, mine, final, invite, parted, rsvpShown) {
   return `<div class="steps"><div class="steps-h">What we need from you</div>${steps.map(([id, label, done], k) =>
     `<button class="step ${done ? 'ok' : ''}" data-step="${id}"><span class="dotn">${done ? '✓' : k + 1}</span>${esc(label)}${done ? '' : '<span class="go">›</span>'}</button>`).join('')}</div>`;
 }
-const STOP_KINDS = [[/music|comedy|theater|theatre|sports|concert|karaoke|trivia/, 'Show'], [/happy hour/, 'Happy hour'], [/drinks|wine|beer|cocktail|bar/, 'Drinks'], [/dessert|ice cream|bakery|coffee/, 'Dessert'], [/brunch|breakfast/, 'Brunch'], [/food/, 'Dinner']];
+// A restaurant's happy hour ("half-price apps") is a meal; only a deal about
+// drinks ("$5 drafts") is Happy hour / Drinks.
+const DRINK_TITLE = /happy hour|\bdrafts?\b|\bpints?\b|\bbeers?\b|\bwines?\b|cocktails?|margaritas?|mimosas?|\bdrinks?\b|\bwells?\b|\bshots?\b|spirits|sangria|\bipa\b/i;
 function stopKind(d) {
-  const text = `${tagsOf(d).join(' ')} ${String(d.category || '').toLowerCase()}`;
-  return (STOP_KINDS.find(([re]) => re.test(text)) || [])[1] || null;
+  const text = `${tagsOf(d).join(' ')} ${String(d.category || '').toLowerCase()}`, title = String(d.title || '');
+  if (/music|comedy|theater|theatre|sports|concert|karaoke|trivia/.test(text)) return 'Show';
+  if (/brunch|breakfast/.test(text)) return 'Brunch';
+  if (/dessert|ice cream|gelato|donut|cookie|cupcake/i.test(title)) return 'Dessert';
+  if (/food/.test(text) && !DRINK_TITLE.test(title)) return 'Dinner';
+  if (/happy hour/.test(text)) return 'Happy hour';
+  if (/drinks|wine|beer|cocktail|bar/.test(text)) return 'Drinks';
+  if (/dessert|ice cream|bakery|coffee/.test(text)) return 'Dessert';
+  return /food/.test(text) ? 'Dinner' : null;
 }
 function stopHtml() {
   const parts = poll.parts || [];
