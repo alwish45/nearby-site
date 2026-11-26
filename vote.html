@@ -1202,7 +1202,10 @@ function addStop(id, where, own = null) {
       p_stop_name: own ? (OUTDOOR.test(`${own.title} ${own.place || ''}`) ? 'A walk' : own.title.slice(0, 30)) : stopKind(d) || (where === 'before' ? 'Before' : 'After'), p_stop_time: time,
       p_main_name: kinds.length && kinds.every(k => k && k === kinds[0]) ? kinds[0] : null,
       p_main_time: slot && slot.time ? String(slot.time).slice(0, 5) : null });
-    adding = false; clearOwn(); render(); loadInfo(); }
+    // The new stop's list stays open, so you can suggest other options for it.
+    const n = (poll.parts || []).length;
+    if (n) { addPart = where === 'before' ? 0 : n - 1; stopOpen = false; } else adding = false;
+    clearOwn(); render(); loadInfo(); if (adding) loadNearby(); }
   catch (e) { alert(/could not find the function/i.test(e.message) ? 'Adding a stop before or after isn’t switched on yet.' : /\d parts/.test(e.message) ? `This plan already has ${(poll.parts || []).length} stops.` : /full/.test(e.message) ? 'This vote is full.' : /plan is set/.test(e.message) ? 'The plan is set, so it can’t change now.' : "Couldn't add that. Try again."); } });
 }
 async function addOption(id) {
