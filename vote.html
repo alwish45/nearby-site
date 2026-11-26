@@ -125,6 +125,9 @@
   .on { color:#1f7a3d; font-size:13px; font-weight:700; margin-top:3px; }
   .night-row { display:flex; gap:10px; text-align:left; border-top:1px solid var(--line); padding:9px 0; }
   .night-row a { color:#c2410c; font-weight:700; text-decoration:none; display:inline-block; padding:12px 0; }
+  .tix { margin-top:6px; padding:8px 10px; border-radius:10px; background:#f5f1ea; text-align:left; }
+  .tixrow { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:6px; }
+  .tixrow a { color:#c2410c; font-weight:800; text-decoration:none; }
   .newbar { display:block; margin:0 0 10px; padding:10px 12px; border-radius:12px; background:#fff1e6; color:#9a3412; font-weight:800; text-decoration:none; text-align:left; }
   .actrow { display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-top:1px solid var(--line); font-size:15px; text-align:left; }
   .actrow.new span:first-child { font-weight:800; } .actrow.new span:first-child::after { content:' · New'; color:#c2410c; }
@@ -217,7 +220,7 @@ async function loadInfo() {
   if (!ids.length) return;
   ids.forEach(id => asked.add(id));
   try {
-    const r = await fetch(`${API.replace('rpc/', '')}deals?id=in.(${ids.join(',')})&select=id,title,description,price_info,image_url,deal_type,recurring_days,valid_from,valid_until,start_time,end_time,businesses(category,address,city,hours,phone,website,menu_url,google_rating,google_rating_count,price_level,logo_url)`, { headers: { apikey: KEY } });
+    const r = await fetch(`${API.replace('rpc/', '')}deals?id=in.(${ids.join(',')})&select=id,title,description,price_info,image_url,source_url,deal_type,recurring_days,valid_from,valid_until,start_time,end_time,businesses(category,address,city,hours,phone,website,menu_url,google_rating,google_rating_count,price_level,logo_url)`, { headers: { apikey: KEY } });
     for (const d of (r.ok ? await r.json() : [])) info[d.id] = d;
     if (!addingTime && !typingIn()) render();
   } catch {}
@@ -473,6 +476,7 @@ function render() {
   app.querySelectorAll('[data-step]').forEach(b => b.addEventListener('click', () => document.getElementById(`step-${b.dataset.step}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })));
   const openAdd = () => { stopOpen = true; adding = true; addPart = 'any'; feed.q = ''; feed.cat = ''; loadNearby(); render(); };
   document.getElementById('stopopen')?.addEventListener('click', openAdd);
+  app.querySelectorAll('[data-ticket]').forEach(b => b.addEventListener('click', () => toggleTicket(b.dataset.ticket)));
   document.getElementById('actmore')?.addEventListener('click', () => { actAll = !actAll; render(); });
   document.getElementById('stopclose')?.addEventListener('click', () => { stopOpen = false; adding = false; addPart = null; render(); });
   document.body.classList.toggle('has-fab', !!document.getElementById('fab'));
@@ -551,6 +555,7 @@ function nightHtml(winners, people, locked = false, pastDay = false) {
       ${gone ? `<div class="off">⏰ ${esc(t12(p.time))} has already passed today</div>` : ''}
       ${off ? `<div class="off">⚠️ Not on at ${esc(t12(p.time))} (${esc(whyOff(t, pd))})${near ? `. Closest: ${esc(t12(near))}` : ''}</div>` : ''}
       ${o && o.own ? (ownMap(o) ? `<a href="${ownMap(o)}" target="_blank" rel="noopener">Directions ›</a>` : '') : o && o.lat ? `<a href="${gmaps(o)}" target="_blank" rel="noopener">Directions ›</a>` : ''}
+      ${pastDay ? '' : ticketsHtml(o)}
     </span></div>`;
   }).join('');
   const located = stops.filter(o => o && o.lat);
@@ -1644,7 +1649,8 @@ function rsvpHtml(final, fullyClosed) {
 const placeName = o => (o && (o.own ? o.title : o.business || o.title)) || '';
 // "Brunch: Zest", and "Coffee at Publik Coffee" when your own stop is named like the stop.
 const sameName = (p, o) => !!(o && o.own) && String(o.title || '').trim().toLowerCase() === String((p && p.name) || '').trim().toLowerCase();
-const stopLabel = (p, o) => (sameName(p, o) ? `${p.name}${o.business ? ` at ${o.business}` : ''}` : placeName(o));
+// A concert or show reads as the event at its venue ("Big Band Live at Red Butte").
+const stopLabel = (p, o) => (isTicketed(o) && o.title && o.business ? `${o.title} at ${o.business}` : sameName(p, o) ? `${p.name}${o.business ? ` at ${o.business}` : ''}` : placeName(o));
 const gmaps = o => `https://www.google.com/maps/dir/?api=1&destination=${o.lat},${o.lng}`;
 // Who's leading (or tied) and what you picked, at the top.
 function summaryHtml(sections, partWin, win, lead, mine, people) {
@@ -1729,6 +1735,25 @@ async function loadWeather(key, ds, at) {
   } catch {}
 }
 
+// A ticketed event (a concert, show or festival): a dated event with a start
+// time, or one priced in tickets. Its row in the plan says who has a ticket,
+// lets you say you have yours, and links to get one (get_poll's 'tickets',
+// scripts/add_poll_tickets.sql in the app repo).
+const isTicketed = o => !!o && !o.own && !!o.deal_id && ((o.deal_type === 'limited_run' && !!o.start_time) || /ticket/i.test(o.price_info || ''));
+function ticketsHtml(o) {
+  if (!isTicketed(o) || !Array.isArray(poll.tickets)) return '';
+  const t = poll.tickets.find(x => x.deal_id === o.deal_id) || { names: [], mine: false };
+  const src = info && info[o.deal_id] ? info[o.deal_id].source_url || '' : '';
+  const url = /^https:\/\//.test(src) ? src : '';
+  const can = !(poll.closed && new Date(poll.closes_at).getTime() < Date.now() - 864e5);
+  return `<div class="tix"><div class="who" style="margin:0">🎟️ ${t.names.length ? `${esc(t.names.join(', '))} ${t.names.length === 1 ? 'has a ticket' : 'have tickets'}` : 'Nobody’s said they have a ticket yet'}</div>
+    <div class="tixrow">${can ? `<button class="chip ${t.mine ? 'on' : ''}" data-ticket="${esc(o.deal_id)}" aria-pressed="${t.mine}">${t.mine ? '✓ I have my ticket' : 'I have my ticket'}</button>` : ''}${url ? `<a href="${esc(url)}" target="_blank" rel="noopener">Get tickets ›</a>` : ''}</div></div>`;
+}
+async function toggleTicket(id) {
+  if (!(await askNameFirst())) return;
+  return once(async () => { try { poll = await rpc('toggle_poll_ticket', { p_code: code, p_voter_key: me, p_deal_id: id, p_name: myName() }); render(); }
+    catch (e) { alert(/could not find the function/i.test(e.message) ? 'Tickets aren’t switched on yet.' : /closed/.test(e.message) ? 'This plan has closed.' : "Couldn't save that. Try again."); } });
+}
 function finalHtml(f) {
   const picks = Array.isArray(f.parts) ? f.parts : [f.option];
   const when = [f.day ? day(f.day) : poll.plan_day ? day(poll.plan_day) : '', f.time ? t12(f.time) : ''].filter(Boolean).join(' · ');
@@ -1736,7 +1761,7 @@ function finalHtml(f) {
     const o = poll.options[i] || {}, p = Array.isArray(f.parts) ? poll.parts[k] : null;
     return `<div class="stop"><div class="t">${p ? `${p.time ? esc(t12(p.time)) + ' · ' : ''}${esc(stopLabel(p, o))}` : esc(placeName(o))}</div>
       ${o.title && o.business ? `<div class="m">${o.own ? '📍 ' + esc(o.business) : esc(o.title)}${o.price_info ? ' · ' + esc(o.price_info) : ''}</div>` : ''}
-      ${o.own ? (ownMap(o) ? `<a href="${ownMap(o)}" target="_blank" rel="noopener">Directions ›</a>` : '') : o.lat ? `<a href="${gmaps(o)}" target="_blank" rel="noopener">Directions ›</a>` : ''}</div>`;
+      ${o.own ? (ownMap(o) ? `<a href="${ownMap(o)}" target="_blank" rel="noopener">Directions ›</a>` : '') : o.lat ? `<a href="${gmaps(o)}" target="_blank" rel="noopener">Directions ›</a>` : ''}${ticketsHtml(o)}</div>`;
   }).join('');
   const fday = f.day || poll.plan_day;
   return `<div class="final"><h2>✅ It’s set${when ? ' · ' + esc(when) : ''}</h2>${multiDay() ? [...new Set(poll.parts.map(partDay))].sort().filter(d => d >= isoDay(utahNow())).map(d => weatherHtml(d, false, wday(d))).join('') : fday && fday >= isoDay(utahNow()) ? weatherHtml(fday) : ''}${stops}
