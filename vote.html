@@ -226,6 +226,7 @@ function moveHtml(o, i, pi, p) {
 async function moveOption(i, to, time) {
   if (saving) return;
   const o = poll.options[i], from = poll.parts[o.part];
+  if (!(await stopsUnchanged())) return;
   saving = true;
   try {
     poll = await rpc('move_poll_option', { p_code: code, p_creator_key: me, p_option: i,
@@ -353,7 +354,7 @@ function render() {
         const deal = o.price_info && !/^\s*tickets\s*$/i.test(o.price_info) ? `<span class="deal">${esc(o.price_info)}</span>` : '';
         const fit = p && p.time && !pastDay && !o.own ? onAt(timed(o), partDay(p), p.time) : null;
         const isFinal = finalIdx.includes(i);
-        const fitLn = fit === false ? `<div class="off">❌ Not on at ${esc(t12(p.time))} (${esc(whyOff(timed(o), pday))})</div>` : fit === true && !fixed ? `<div class="on">✅ On at ${esc(t12(p.time))}</div>` : '';
+        const fitLn = fit === false ? `<div class="off">❌ Not on at ${esc(t12(p.time))} (${esc(whyOff(timed(o), partDay(p)))})</div>` : fit === true && !fixed ? `<div class="on">✅ On at ${esc(t12(p.time))}</div>` : '';
         return `<button class="opt ${mine.includes(i) ? 'mine' : ''} ${isFinal ? 'final-pick' : final ? 'dim' : ''}" data-i="${i}" ${poll.closed || invite || fixed || final ? 'disabled' : ''} aria-pressed="${mine.includes(i)}">
         <span class="bar ${secTop && n === secTop ? 'win' : ''}" style="width:${pct}%"></span>
         <span class="row">${img}<span class="grow">
@@ -1061,6 +1062,7 @@ async function postNote(part = null) {
   const el = document.getElementById(part == null ? 'note' : `note-${part}`);
   const body = el ? el.value.trim() : '';
   if (!body || saving) return;
+  if (part != null && !(await stopsUnchanged())) return; // a stop's number may have changed
   saving = true;
   try {
     poll = await rpc('add_poll_comment', { p_code: code, p_voter_key: me, p_name: myName(), p_body: body, ...(part == null ? {} : { p_part: part }) });
@@ -1169,10 +1171,11 @@ async function stopsUnchanged() {
   checkingStops = true;
   let fresh = null;
   try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { return true; } finally { checkingStops = false; }
-  const names = x => (x?.parts || []).map(q => q.name).join('|');
+  // Each stop's name, day and time: a stop moved to another time renumbers the rest too.
+  const names = x => (x?.parts || []).map(q => `${q.name}@${q.date || ''} ${q.time || ''}`).join('|');
   if (!fresh || names(fresh) === names(poll)) return true;
-  poll = fresh; adding = false; ptOpen.clear(); lastWrite = Date.now(); render();
-  alert('The plan just changed: someone added or removed a stop. Have a look and try again.');
+  poll = fresh; adding = false; ptOpen.clear(); threadOpen.clear(); moveOpen = null; lastWrite = Date.now(); render();
+  alert('The plan just changed: someone added, moved or removed a stop while you were here. Have a look and try again.');
   return false;
 }
 async function togglePartTime(pi, t) {
