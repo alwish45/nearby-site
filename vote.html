@@ -784,10 +784,10 @@ function priceFrom(d) {
   if (isFree(d)) return 0;
   for (const text of [d.price_info, d.title]) {
     const str = String(text || ''), amounts = [];
-    for (const m of str.matchAll(/\$\s?(\d{1,4}(?:\.\d{1,2})?)(?![\d.])/g)) {
+    for (const m of str.matchAll(/\$\s?((?:\d{1,3}(?:,\d{3})+|\d{1,5})(?:\.\d{1,2})?)(?!\d)/g)) {
       const before = str.slice(Math.max(0, m.index - 6), m.index), after = str.slice(m.index + m[0].length, m.index + m[0].length + 10);
       if (/save\s*$|up to\s*$/i.test(before) || /^\s*(off|discount|credit|value|savings)/i.test(after)) continue;
-      amounts.push(parseFloat(m[1]));
+      amounts.push(parseFloat(m[1].replace(/,/g, '')));
     }
     if (amounts.length) return Math.min(...amounts);
   }
@@ -917,14 +917,14 @@ function notesHtml(name, typed) {
 let phoneOpen = false;
 function textsHtml() {
   if (!('my_text' in poll)) return '';
-  if (poll.my_text) return `<p class="who" style="margin:10px 0 0">📱 Texting ···${esc(poll.my_text)} when someone leaves a note · <button class="linkbtn" id="textstop">Stop</button></p>`;
-  if (!phoneOpen) return `<button class="linkbtn" id="textopen" style="margin-top:10px">📱 Text me when someone leaves a note</button>`;
+  if (poll.my_text) return `<p class="who" style="margin:10px 0 0">📱 Texting ···${esc(poll.my_text)} ${poll.my_text_updates ? 'new notes, when it’s set and the morning of' : 'when someone leaves a note'} · <button class="linkbtn" id="textstop">Stop</button></p>`;
+  if (!phoneOpen) return `<button class="linkbtn" id="textopen" style="margin-top:10px">📱 Text me updates on this plan</button>`;
   const typed = document.getElementById('phone')?.value || '';
   return `<div class="namerow" style="margin-top:10px"><input id="phone" type="tel" maxlength="20" autocomplete="tel" placeholder="Your phone number" value="${esc(typed)}"><button id="textme">Text me</button></div>
-    <p class="who" style="margin:6px 0 0">We’ll text you when someone else leaves a note on this vote. US numbers only. Msg &amp; data rates may apply. Reply STOP to stop.</p>`;
+    <p class="who" style="margin:6px 0 0">We’ll text you when someone else leaves a note, when the plan is set, and the morning of. US numbers only. Msg &amp; data rates may apply. Reply STOP to stop.</p>`;
 }
 function setTexts(phone) {
-  return once(async () => { try { poll = await rpc('set_poll_text', { p_code: code, p_voter_key: me, p_phone: phone }); phoneOpen = false; lastWrite = Date.now(); render(); }
+  return once(async () => { try { poll = await rpc('set_poll_text', { p_code: code, p_voter_key: me, p_phone: phone, p_updates: !!phone }); phoneOpen = false; lastWrite = Date.now(); render(); }
   catch (e) { alert(/could not find the function/i.test(e.message) ? 'Texts aren’t switched on yet.' : /US phone/.test(e.message) ? 'Enter a US phone number.' : /today/.test(e.message) ? 'That’s a lot of numbers today. Try again tomorrow.' : /too many numbers/.test(e.message) ? 'This vote has too many numbers already.' : "Couldn't save that. Try again."); } });
 }
 async function postNote() {
@@ -1279,6 +1279,8 @@ async function load() {
   // A dropped connection keeps the last good results instead of "Vote not found".
   try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { fresh = poll ? undefined : null; }
   if (saving || lastWrite >= startedAt) return;
+  // A stop added in front moves every stop's number: close an open suggestion list and other-times rows.
+  if (fresh && poll && (fresh.parts || []).length !== (poll.parts || []).length) { if (typeof addPart === 'number') adding = false; ptOpen.clear(); }
   if (fresh !== undefined) poll = fresh;
   // Don't redraw under someone typing their name, a note or a search, or picking a time.
   if (!addingTime && !['name', 'note', 'find', 'zday', 'phone', 'owntitle', 'ownplace'].includes(document.activeElement && document.activeElement.id)) render();
