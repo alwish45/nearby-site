@@ -41,8 +41,14 @@
   .more a { color:#c2410c; font-weight:700; text-decoration:none; white-space:nowrap; }
   .box { background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:14px; margin:0 0 10px; }
   .cnote { text-align:left; border-top:1px solid var(--line); padding:9px 0; font-size:15px; line-height:1.4; overflow-wrap:anywhere; }
+  .thread { text-align:left; background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:10px 12px; margin:8px 0 4px; }
+  .thread-h { font-size:14px; font-weight:800; color:var(--muted); }
+  .thread-btns { display:flex; gap:10px; align-items:center; margin-top:6px; }
+  .thread-btns .downbtn { flex:1; margin:0; }
+  .thread-btns .linkbtn { padding:0; }
+  .thread-open { display:block; margin:8px 0 4px; }
   .cnote .del { background:none; border:0; font:inherit; font-size:12px; color:var(--muted); cursor:pointer; padding:0 0 0 6px; }
-  textarea#note { display:block; width:100%; box-sizing:border-box; font:inherit; font-size:16px; border:1.5px solid var(--line); border-radius:12px; padding:12px; margin-top:8px; resize:vertical; }
+  textarea#note, .thread textarea { display:block; width:100%; box-sizing:border-box; font:inherit; font-size:16px; border:1.5px solid var(--line); border-radius:12px; padding:12px; margin-top:8px; resize:vertical; }
   .box h2 { font-size:13px; letter-spacing:.6px; text-transform:uppercase; color:var(--muted); margin:0 0 8px; }
   .how { display:flex; gap:8px; }
   .how button { flex:1; font:inherit; font-weight:700; font-size:14px; background:#fff; border:1.5px solid var(--line); border-radius:12px; padding:10px 4px; cursor:pointer; color:inherit; }
@@ -194,7 +200,7 @@ async function loadInfo() {
   try {
     const r = await fetch(`${API.replace('rpc/', '')}deals?id=in.(${ids.join(',')})&select=id,title,description,price_info,image_url,deal_type,recurring_days,valid_from,valid_until,start_time,end_time,businesses(category,address,city,hours,phone,website,menu_url,google_rating,google_rating_count,price_level,logo_url)`, { headers: { apikey: KEY } });
     for (const d of (r.ok ? await r.json() : [])) info[d.id] = d;
-    if (!addingTime && !['name', 'note', 'find', 'zday', 'phone', 'owntitle', 'ownplace'].includes(document.activeElement && document.activeElement.id)) render();
+    if (!addingTime && !typingIn()) render();
   } catch {}
 }
 const cap = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
@@ -334,7 +340,7 @@ function render() {
       const open = adding && addPart === pi;
       const sug = poll.can_add && !final && (!p || idxs.length < 6)
         ? `<button class="suggest" data-suggest="${pi ?? ''}">${open ? 'Done' : p ? `＋ Suggest another place${p.time ? ` for ${esc(t12(p.time))}` : ''}` : '＋ Suggest another place'}</button>${open ? (p && 'part_times' in poll ? ownHtml(/walk|park|hang|something to do|activity/i.test(p.name)) : '') + picksHtml() : ''}` : '';
-      return head + opts + sug;
+      return head + opts + sug + (p ? threadHtml(pi, p) : '');
     }).join('')}
     ${parted ? nightHtml(final ? final.parts : partWin, people, !!final, pastDay) : ''}
     ${poll.how && !invite && !parted && !final && foodVote() ? `<div class="box"><h2>How should we do it?</h2><div class="how">${[['dine_in', '🍽️ Dine in'], ['pickup', '🛍️ Pickup'], ['delivery', '🚗 Delivery']].map(([k, l]) => `<button data-how="${k}" class="${poll.my_how === k ? 'on' : ''}" ${fullyClosed ? 'disabled' : ''}>${l}<b>${poll.how[k] || 0}</b></button>`).join('')}</div><div class="who">A head count for the group. Check with the place that it offers pickup or delivery.</div></div>` : ''}
@@ -392,7 +398,14 @@ function render() {
   document.getElementById('savetime')?.addEventListener('click', addTime);
   bindFitForm();
   bindZoom(invite ? 0 : win);
-  document.getElementById('postnote')?.addEventListener('click', postNote);
+  document.getElementById('postnote')?.addEventListener('click', () => postNote());
+  app.querySelectorAll('[data-postpart]').forEach(b => b.addEventListener('click', () => postNote(Number(b.dataset.postpart))));
+  app.querySelectorAll('[data-thread]').forEach(b => b.addEventListener('click', () => {
+    const pi = Number(b.dataset.thread);
+    if (threadOpen.has(pi)) { threadOpen.delete(pi); delete threadTyped[pi]; render(); return; }
+    threadOpen.add(pi); render(); document.getElementById(`note-${pi}`)?.focus();
+  }));
+  app.querySelectorAll('textarea[id^="note-"]').forEach(t => t.addEventListener('input', () => { threadTyped[Number(t.id.slice(5))] = t.value; }));
   app.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => deleteNote(Number(b.dataset.del))));
 }
 
@@ -963,16 +976,33 @@ function redrawFeed() {
   body.innerHTML = feedBody();
   bindFeed();
 }
+const typingIn = () => { const id = (document.activeElement && document.activeElement.id) || ''; return ['name', 'note', 'find', 'zday', 'phone', 'owntitle', 'ownplace'].includes(id) || id.startsWith('note-'); };
+const agoText = at => { const m = Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 60000));
+  return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} hr ago` : day(String(at).slice(0, 10)); };
+const noteRow = c => `<div class="cnote"><div><b>${c.mine ? 'You' : esc(c.name)}</b> <span class="who">${esc(agoText(c.at))}</span>${c.mine ? ` <button class="del" data-del="${Number(c.id)}">Delete</button>` : ''}</div><div>${esc(c.body)}</div></div>`;
+const notesOpen = () => !(poll.closed && new Date(poll.closes_at).getTime() < Date.now() - 864e5);
+// Each stop's own thread ("Can we do 10:30?"), under its places. Shown when it
+// has comments or its "Comment" button is tapped. Needs comments with a part.
+const threadOpen = new Set(), threadTyped = {};
+function threadHtml(pi, p) {
+  if (!Array.isArray(poll.comments) || !p) return '';
+  const list = poll.comments.filter(c => c.part === pi), open = threadOpen.has(pi), can = notesOpen();
+  const at = p.time ? t12(p.time) : 'this stop';
+  if (!list.length && !open) return can ? `<button class="linkbtn thread-open" data-thread="${pi}">💬 Comment on ${esc(at)}</button>` : '';
+  return `<div class="thread"><div class="thread-h">💬 About ${esc(at)}${list.length ? ' · ' + list.length : ''}</div>${list.map(noteRow).join('')}
+    ${can ? (open ? `<textarea id="note-${pi}" maxlength="300" rows="2" placeholder="Say something about ${esc(at)}">${esc(threadTyped[pi] || '')}</textarea>
+      <div class="thread-btns"><button class="downbtn" data-postpart="${pi}">Post</button><button class="linkbtn" data-thread="${pi}">Cancel</button></div>`
+      : `<button class="linkbtn" data-thread="${pi}">Reply</button>`) : ''}</div>`;
+}
 // Notes and comments: anyone with the link can leave one and delete their own.
 // name: null when the name box is already at the top of the page.
 function notesHtml(name, typed) {
   if (!Array.isArray(poll.comments)) return ''; // older database without comments
-  const list = poll.comments;
-  const open = !(poll.closed && new Date(poll.closes_at).getTime() < Date.now() - 864e5);
-  const ago = at => { const m = Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 60000));
-    return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} hr ago` : day(String(at).slice(0, 10)); };
-  const rows = list.map(c => `<div class="cnote"><div><b>${c.mine ? 'You' : esc(c.name)}</b> <span class="who">${esc(ago(c.at))}</span>${c.mine ? ` <button class="del" data-del="${Number(c.id)}">Delete</button>` : ''}</div><div>${esc(c.body)}</div></div>`).join('');
-  return `<div class="box"><h2>💬 Notes${list.length ? ' · ' + list.length : ''}</h2>
+  // Comments about one stop are in its thread; these are for the whole plan.
+  const list = poll.comments.filter(c => c.part == null || !(poll.parts || [])[c.part]);
+  const open = notesOpen();
+  const rows = list.map(noteRow).join('');
+  return `<div class="box"><h2>💬 Notes for the whole plan${list.length ? ' · ' + list.length : ''}</h2>
     ${list.length ? rows : '<p class="m" style="margin:0 0 8px">Anything the group should know? “I can only do after 7”, “Sapa needs a reservation”…</p>'}
     ${open ? `${name === '' ? '<input id="name" maxlength="30" placeholder="Your name (so friends know who wrote it)" style="margin:8px 0 0">' : ''}
       <textarea id="note" maxlength="300" rows="2" placeholder="Add a note">${esc(typed)}</textarea>
@@ -995,12 +1025,16 @@ function setTexts(phone) {
   return once(async () => { try { poll = await rpc('set_poll_text', { p_code: code, p_voter_key: me, p_phone: phone, p_updates: !!phone }); phoneOpen = false; lastWrite = Date.now(); render(); }
   catch (e) { alert(/could not find the function/i.test(e.message) ? 'Texts aren’t switched on yet.' : /US phone/.test(e.message) ? 'Enter a US phone number.' : /today/.test(e.message) ? 'That’s a lot of numbers today. Try again tomorrow.' : /too many numbers/.test(e.message) ? 'This vote has too many numbers already.' : "Couldn't save that. Try again."); } });
 }
-async function postNote() {
-  const el = document.getElementById('note');
+// part: a stop's thread, or null for the whole plan.
+async function postNote(part = null) {
+  const el = document.getElementById(part == null ? 'note' : `note-${part}`);
   const body = el ? el.value.trim() : '';
   if (!body || saving) return;
   saving = true;
-  try { poll = await rpc('add_poll_comment', { p_code: code, p_voter_key: me, p_name: myName(), p_body: body }); el.value = ''; lastWrite = Date.now(); }
+  try {
+    poll = await rpc('add_poll_comment', { p_code: code, p_voter_key: me, p_name: myName(), p_body: body, ...(part == null ? {} : { p_part: part }) });
+    el.value = ''; if (part != null) { delete threadTyped[part]; threadOpen.delete(part); } lastWrite = Date.now();
+  }
   catch (e) { alert(/too many/.test(e.message) ? 'That’s a lot of comments. Try again in a few minutes.' : /closed/.test(e.message) ? 'This vote has closed.' : "Couldn't post that. Try again."); }
   saving = false;
   render();
@@ -1521,7 +1555,7 @@ async function loadWeather(key, ds, at) {
     const t = main.shortForecast || '';
     const icon = /thunder/i.test(t) ? '⛈️' : /snow|flurr|sleet/i.test(t) ? '🌨️' : /rain|shower|drizzle/i.test(t) ? '🌧️' : /fog|haze|smoke/i.test(t) ? '🌫️' : /cloud|overcast/i.test(t) ? (/partly|mostly sunny/i.test(t) ? '⛅' : '☁️') : main.isDaytime ? '☀️' : '🌙';
     weather[key] = `${icon} ${t}, ${main.temperature}°${dayP && night ? ` · low ${night.temperature}°` : ''}`;
-    if (!addingTime && !['name', 'note', 'find', 'zday', 'phone', 'owntitle', 'ownplace'].includes(document.activeElement && document.activeElement.id)) render();
+    if (!addingTime && !typingIn()) render();
   } catch {}
 }
 
@@ -1610,10 +1644,10 @@ async function load() {
   try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { fresh = poll ? undefined : null; }
   if (saving || lastWrite >= startedAt) return;
   // A stop added in front moves every stop's number: close an open suggestion list and other-times rows.
-  if (fresh && poll && (fresh.parts || []).length !== (poll.parts || []).length) { if (typeof addPart === 'number') adding = false; ptOpen.clear(); }
+  if (fresh && poll && (fresh.parts || []).length !== (poll.parts || []).length) { threadOpen.clear(); if (typeof addPart === 'number') adding = false; ptOpen.clear(); }
   if (fresh !== undefined) poll = fresh;
   // Don't redraw under someone typing their name, a note or a search, or picking a time.
-  if (!addingTime && !['name', 'note', 'find', 'zday', 'phone', 'owntitle', 'ownplace'].includes(document.activeElement && document.activeElement.id)) render();
+  if (!addingTime && !typingIn()) render();
   loadInfo();
 }
 load();
