@@ -336,7 +336,8 @@ function render() {
   app.querySelectorAll('[data-suggest]').forEach(b => b.addEventListener('click', () => {
     const v = b.dataset.suggest;
     const pi = v === '' ? null : v === 'before' || v === 'after' ? v : Number(v);
-    if (adding && addPart === pi) adding = false; else { adding = true; addPart = pi; feed.q = ''; loadNearby(); }
+    // A walk opens on things to do outdoors.
+    if (adding && addPart === pi) adding = false; else { adding = true; addPart = pi; feed.q = ''; feed.cat = typeof pi === 'number' && /walk|park|outdoor/i.test((poll.parts[pi] || {}).name || '') ? 'outdoor' : ''; loadNearby(); }
     render();
   }));
   app.querySelectorAll('[data-how]').forEach(b => b.addEventListener('click', () => setHow(b.dataset.how)));
@@ -765,17 +766,25 @@ function goodPick(d) {
 // Search, what kind, how far (from the vote's first place) and what time.
 const PICK_CATS = [['', 'All', '⭐'], ['happy hour', 'Happy hour', '🍻'], ['drinks', 'Drinks', '🍸'], ['food', 'Food', '🍽️'], ['brunch', 'Brunch', '🌅'],
   ['music', 'Live music', '🎵'], ['sports', 'Sports', '🏈'], ['trivia', 'Trivia', '🎯'], ['comedy', 'Comedy', '😂'], ['theater', 'Theater', '🎭'],
-  ['pizza', 'Pizza', '🍕'], ['taco', 'Tacos', '🌮'], ['sushi', 'Sushi', '🍱'], ['burger', 'Burgers', '🍔'], ['family', 'Family', '🎈'], ['free', 'Free', '🆓']];
+  ['pizza', 'Pizza', '🍕'], ['taco', 'Tacos', '🌮'], ['sushi', 'Sushi', '🍱'], ['burger', 'Burgers', '🍔'], ['family', 'Family', '🎈'], ['outdoor', 'Outdoors', '🌳'], ['free', 'Free', '🆓']];
 // The same kinds the app matches by place type or title, not only tags.
 const FOOD_KIND = { pizza: [/pizza|\bslices?\b/i, ['pizza']], taco: [/tacos?\b|burrito|enchilada|nachos|quesadilla/i, ['mexican']], sushi: [/sushi|sashimi|\bpoke\b|\brolls?\b/i, ['sushi']], burger: [/burger/i, []] };
 const MILES = [[0, 'Any distance'], [1, 'Under 1 mi'], [3, 'Under 3 mi'], [5, 'Under 5 mi']];
 const SLOTS = [['', 'Any time'], ['morning', 'Morning'], ['lunch', 'Lunch'], ['afternoon', 'Afternoon'], ['evening', 'Evening'], ['late', 'Late night']];
 const SLOT_RANGE = { morning: [300, 660], lunch: [660, 840], afternoon: [840, 1020], evening: [1020, 1260], late: [1260, 1560] };
 const FEED_STEP = 12;
-const feed = { q: '', cat: '', mi: 0, slot: '', shown: FEED_STEP };
+const feed = { q: '', cat: '', mi: 0, slot: '', free: false, shown: FEED_STEP };
 const tagsOf = d => (d.category_tags || []).map(t => String(t).toLowerCase());
+// Free and outdoors, the same rules as the app (deal-finder-v2 lib/config.js isFree / isOutdoors).
+const FREE_PRICE = /^\s*(free( (admission|entry|event|show|concert|pool|to (play|attend|watch|enter)|and open to (the|all)( public)?))?|no cover( charge)?)\s*[.!]?\s*$/i;
+const isFree = d => tagsOf(d).includes('free') || FREE_PRICE.test(d.price_info || '');
+const OUTDOOR_TEXT = /\b(outdoors?|open[- ]air|park(?!\s*city)(?!\s*(ave|st|street|blvd|row|place|lane))|hik(e|es|ing)|trails?|trailhead|(botanical|red butte|thanksgiving point|ashton) gardens?|gardens\b|(farmers'?|holiday|christmas|night|craft|winter|makers'?) markets?|festival|holiday lights|lights (display|walk|tour)|ice skating|skating rink|sledding|stroll|nature (center|walk|preserve)|canyon|zoo|aviary|amphitheat(er|re)|picnic|bird ?watching|snowshoe)\b/i;
+const NOT_OUTDOOR = /film festival|festival ballet|festival of trees|trail ?blazers|(trampoline|fun|action|station|jump|bounce|indoor|water) park|ninja|cinemark|megaplex/i;
+const isOutdoors = d => { const x = `${d.title || ''} ${d.business_name || ''} ${d.category || ''}`; return OUTDOOR_TEXT.test(x) && !NOT_OUTDOOR.test(x); };
 function catOk(d, key) {
   if (!key) return true;
+  if (key === 'free') return isFree(d);
+  if (key === 'outdoor') return isOutdoors(d);
   if (tagsOf(d).some(t => t.includes(key))) return true;
   const k = FOOD_KIND[key];
   return !!k && (k[1].includes(String(d.category || '').toLowerCase()) || k[0].test(d.title || ''));
@@ -828,7 +837,7 @@ function feedCard(d) {
 }
 function feedBody() {
   const q = feed.q.trim().toLowerCase();
-  const scoped = feedPool().filter(d => (!q || findText(d).includes(q)) && (!feed.mi || (d.distance_m != null && d.distance_m <= feed.mi * 1609.34)) && slotOk(d, feed.slot));
+  const scoped = feedPool().filter(d => (!q || findText(d).includes(q)) && (!feed.mi || (d.distance_m != null && d.distance_m <= feed.mi * 1609.34)) && slotOk(d, feed.slot) && (!feed.free || isFree(d)));
   const chips = (rows, on, attr, count) => `<div class="chips">${rows.map(([k, label, icon]) => {
     const n = count ? count(k) : null;
     if (count && k && !n && k !== on) return ''; // nothing of that kind here
@@ -842,6 +851,7 @@ function feedBody() {
   const empty = feed.q.trim() ? `Nothing nearby matches “${esc(feed.q.trim())}”.` : 'Nothing matches those filters. Try All, a wider distance or another time.';
   return chips(PICK_CATS, feed.cat, 'data-cat', k => (k ? new Set(scoped.filter(d => catOk(d, k)).map(d => d.business_name)).size : new Set(scoped.map(d => d.business_name)).size))
     + chips(MILES, feed.mi, 'data-mi') + chips(SLOTS, feed.slot, 'data-slot')
+    + `<div class="chips"><button class="chip ${feed.free ? 'on' : ''}" id="feedfree" aria-pressed="${feed.free}">${feed.free ? '✓ ' : ''}🆓 Free only</button></div>`
     + (shown.length ? shown.map(feedCard).join('') : `<p class="sub">${empty}</p>`)
     + (list.length > shown.length ? `<button class="suggest" id="feedmore">Show ${Math.min(FEED_STEP, list.length - shown.length)} more</button>` : '');
 }
@@ -860,6 +870,7 @@ function bindFeed() {
   body.querySelectorAll('[data-mi]').forEach(b => b.addEventListener('click', () => { feed.mi = Number(b.dataset.mi); feed.shown = FEED_STEP; redrawFeed(); }));
   body.querySelectorAll('[data-slot]').forEach(b => b.addEventListener('click', () => { feed.slot = b.dataset.slot; feed.shown = FEED_STEP; redrawFeed(); }));
   document.getElementById('feedmore')?.addEventListener('click', () => { feed.shown += FEED_STEP; redrawFeed(); });
+  document.getElementById('feedfree')?.addEventListener('click', () => { feed.free = !feed.free; feed.shown = FEED_STEP; redrawFeed(); });
 }
 function redrawFeed() {
   const body = document.getElementById('feedbody');
