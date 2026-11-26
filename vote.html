@@ -125,6 +125,13 @@
   .on { color:#1f7a3d; font-size:13px; font-weight:700; margin-top:3px; }
   .night-row { display:flex; gap:10px; text-align:left; border-top:1px solid var(--line); padding:9px 0; }
   .night-row a { color:#c2410c; font-weight:700; text-decoration:none; display:inline-block; padding:12px 0; }
+  .newbar { display:block; margin:0 0 10px; padding:10px 12px; border-radius:12px; background:#fff1e6; color:#9a3412; font-weight:800; text-decoration:none; text-align:left; }
+  .actrow { display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-top:1px solid var(--line); font-size:15px; text-align:left; }
+  .actrow.new span:first-child { font-weight:800; } .actrow.new span:first-child::after { content:' · New'; color:#c2410c; }
+  .stand { font-size:14px; font-weight:700; margin-top:2px; }
+  .stand.ok { color:#1f7a3d; } .stand.open { color:#9a3412; }
+  .standfoot { margin-top:8px; padding:10px 12px; border-radius:12px; font-weight:700; font-size:15px; text-align:left; }
+  .standfoot.open { background:#fff1e6; color:#9a3412; } .standfoot.ok { background:#e9f7ee; color:#1f7a3d; }
   .night-row .ntime { width:62px; flex:none; font-weight:800; color:#c2410c; }
   .zoom-row { display:flex; align-items:center; gap:6px; }
   .zoom-row .chips { flex:1; padding-bottom:4px; }
@@ -370,6 +377,7 @@ function render() {
       ? (poll.closed ? 'This invite has closed.' : rsvpShown ? 'Tap “I’m in” if you’re coming. No app needed.' : 'Tap “I’m down” if you’re in. No app needed.')
       : `${poll.closed ? 'This vote has closed.' : final ? 'The plan is set. Say if you’re in below.' : (poll.parts || []).length ? 'Tick the times you can make and vote on places. No app needed.' : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
     ${pastDay ? `<p class="off" style="text-align:left">This was for ${esc(day(planDayOf()))}.</p>` : ''}
+    ${(() => { const n = (poll.activity || []).filter(a => seenAt && new Date(a.at).getTime() > seenAt).length; return n ? `<a class="newbar" href="#activity">🔔 ${n} new since you last looked ›</a>` : ''; })()}
     ${!poll.closed && !final && poll.closes_at && !(planDayOf() && isoDay(new Date(new Date(poll.closes_at).toLocaleString('en-US', { timeZone: 'America/Denver' }))) > planDayOf()) ? `<p class="who" style="text-align:left;margin:-4px 0 8px">Voting closes ${esc(new Date(poll.closes_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Denver' }))}</p>` : ''}
     ${askName ? `<div class="namecard"><div class="t">👋 What’s your name?</div><div class="m">So your friends know who voted and who’s in.</div>
       <div class="namerow"><input id="name" maxlength="30" autocomplete="given-name" placeholder="Your first name" value="${esc(savedName)}"><button id="savename">Save</button></div></div>`
@@ -378,7 +386,7 @@ function render() {
     ${parted && rsvpShown ? rsvpHtml(final, fullyClosed) : ''}
     ${stepsHtml(sections, mine, final, invite, parted, rsvpShown)}
     ${parted && !final && !poll.closed ? '<h2 class="sec">Help shape it</h2>' : ''}
-    ${final ? finalHtml(final) : !invite && !(parted && sections.every(x => x.idxs.length === 1)) ? summaryHtml(sections, partWin, win, lead, mine, people) : ''}
+    ${final ? finalHtml(final) : !invite && !parted ? summaryHtml(sections, partWin, win, lead, mine, people) : ''}
     ${!parted && !invite ? '<div id="step-vote"></div>' : ''}
     ${parted && Array.isArray(poll.times) && !final && !poll.closed && !multiDay() ? dayVoteHtml() : ''}
     ${parted && poll.is_creator && !final && !poll.closed ? `<button class="edittoggle ${editing ? 'on' : ''}" id="edittoggle" aria-expanded="${editing}"><b>${editing ? '✓ Done editing' : '✏️ Edit stops'}</b><span>${editing ? 'Tap ↔ under a place to move it, or ✕ to remove a stop' : 'Move places to other times, or remove a stop'}</span></button>` : ''}
@@ -423,6 +431,7 @@ function render() {
       <div class="m">${(poll.down || []).length ? esc(poll.down.join(', ')) : parted ? 'Tap if you’re in for the night.' : `Tap if you’re in for ${esc(poll.options[go].business || 'the winner')}.`}</div>
       <button class="downbtn ${poll.i_am_down ? 'on' : ''}" id="downbtn" ${fullyClosed ? 'disabled' : ''}>${poll.i_am_down ? '✓ You’re down (tap to undo)' : 'I’m down 🙌'}</button>
     </div>` : ''}
+    ${activityHtml()}
     ${notesHtml(askName || savedName ? null : '', typedNote)}
     ${stopHtml()}
     ${fabOn() ? '<button class="fab" id="fab" aria-label="Suggest a place or your own event">＋ Suggest or add an event</button>' : ''}
@@ -464,6 +473,7 @@ function render() {
   app.querySelectorAll('[data-step]').forEach(b => b.addEventListener('click', () => document.getElementById(`step-${b.dataset.step}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })));
   const openAdd = () => { stopOpen = true; adding = true; addPart = 'any'; feed.q = ''; feed.cat = ''; loadNearby(); render(); };
   document.getElementById('stopopen')?.addEventListener('click', openAdd);
+  document.getElementById('actmore')?.addEventListener('click', () => { actAll = !actAll; render(); });
   document.getElementById('stopclose')?.addEventListener('click', () => { stopOpen = false; adding = false; addPart = null; render(); });
   document.body.classList.toggle('has-fab', !!document.getElementById('fab'));
   document.getElementById('fab')?.addEventListener('click', () => { openAdd(); document.getElementById('step-addstop')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
@@ -492,6 +502,31 @@ function render() {
   app.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => deleteNote(Number(b.dataset.del))));
 }
 
+// Where one stop stands: its pick (one place, the leader with its votes, a tie,
+// or no votes yet) and whether a time friends suggested is ahead of its own.
+function stopStanding(pi) {
+  const idxs = poll.options.map((o, i) => (o.part === pi ? i : -1)).filter(i => i >= 0);
+  const n = i => poll.counts[i] || 0, top = Math.max(0, ...idxs.map(n)), lead = idxs.filter(i => n(i) === top);
+  const p = poll.parts[pi], own = String(p.time || '').slice(0, 5);
+  const best = 'part_times' in poll ? bestPartTime(pi) : null;
+  const others = (poll.part_times || []).filter(r => r.part === pi && r.time !== own).map(r => r.time);
+  const time = best ? `🕒 ${t12(best)} is ahead of ${own ? t12(own) : 'the planned time'}` : others.length ? `🕒 Also suggested: ${others.map(t12).join(', ')}` : '';
+  if (idxs.length <= 1) return { ok: !best, line: best ? '⚖️ The time may change' : '✅ The only option here', time };
+  if (top > 0 && lead.length === 1) return { ok: !best, line: `🏆 Leading · ${top} vote${top === 1 ? '' : 's'} · ${idxs.length} options`, time };
+  if (top > 0) return { ok: false, tie: `Tied: ${lead.map(i => placeName(poll.options[i])).join(' or ')}`, line: `⚖️ Tied at ${top} vote${top === 1 ? '' : 's'} · one more settles it`, time };
+  return { ok: false, line: `❓ Needs votes · ${idxs.length} options`, time };
+}
+// The plan card's last line: what's still open, or that it's ready to lock in.
+function standFooter() {
+  const open = (poll.parts || []).map((_, pi) => stopStanding(pi)).filter(x => !x.ok).length;
+  const dayLine = Array.isArray(poll.times) && poll.times.length > 1 && !multiDay() ? (() => {
+    const c = poll.time_counts || [], top = Math.max(0, ...c), lead = c.map((x, i) => (x === top ? i : -1)).filter(i => i >= 0);
+    return !top ? '📅 Which day? No answers yet' : lead.length === 1 ? `📅 ${day(poll.times[lead[0]].day)} works for the most people` : '📅 The day is tied';
+  })() : '';
+  const msg = open ? `Still open: ${open} stop${open === 1 ? '' : 's'}. Vote or suggest to settle ${open === 1 ? 'it' : 'them'}.`
+    : poll.is_creator ? 'Every stop has a pick. Lock it in from the near.by app.' : 'Every stop has a pick. The organizer locks it in.';
+  return `<div class="standfoot ${open ? 'open' : 'ok'}">${dayLine ? `<div>${esc(dayLine)}</div>` : ''}<div>${esc(msg)}</div></div>`;
+}
 // A plan's night: each part's time and the place in the lead, with directions.
 function nightHtml(winners, people, locked = false, pastDay = false) {
   const today = isoDay(utahNow()), pday = planDayOf() || today;
@@ -506,10 +541,12 @@ function nightHtml(winners, people, locked = false, pastDay = false) {
     const hop = prev && prev.lat && o && o.lat ? miles(prev, o) : null;
     const hopLine = hop == null ? '' : `<div class="hop" ${hop > 5 ? 'style="color:#b4441c"' : ''}>↓ ${hop < 0.1 ? 'next door' : hop.toFixed(1) + ' mi'} · ~${Math.max(1, Math.round(hop <= 0.8 ? hop * 20 : hop * 2.5 + 3))} min ${hop <= 0.8 ? 'walk' : 'drive'}${hop > 5 ? ' · far apart' : ''}</div>`;
     const near = off ? nearestOn(t, pd, p.time) : null;
+    const st = locked || pastDay ? null : stopStanding(pi);
     // Today, and the time's gone by (a 9am stop on a plan sent at noon).
     const now = utahNow(), gone = !locked && !pastDay && pd === isoDay(now) && p.time && mins(p.time) < now.getHours() * 60 + now.getMinutes();
     return `${hopLine}<div class="night-row"><span class="ntime">${multiDay() ? esc(wday(pd)) + '<br>' : ''}${p.time ? esc(t12(p.time)) : '—'}</span><span class="grow">
-      <div class="t">${o ? esc(stopLabel(p, o)) : 'Tied or still voting'}</div>
+      <div class="t">${o ? esc(stopLabel(p, o)) : st && st.tie ? esc(st.tie) : 'Still voting'}</div>
+      ${st ? `<div class="stand ${st.ok ? 'ok' : 'open'}">${esc(st.line)}</div>${st.time ? `<div class="who" style="margin:2px 0 0">${esc(st.time)}</div>` : ''}` : ''}
       ${o && o.own && o.business ? `<div class="who">📍 ${esc(o.business)}</div>` : ''}
       ${gone ? `<div class="off">⏰ ${esc(t12(p.time))} has already passed today</div>` : ''}
       ${off ? `<div class="off">⚠️ Not on at ${esc(t12(p.time))} (${esc(whyOff(t, pd))})${near ? `. Closest: ${esc(t12(near))}` : ''}</div>` : ''}
@@ -521,7 +558,7 @@ function nightHtml(winners, people, locked = false, pastDay = false) {
   const dayPlan = poll.parts.some(p => p.time && String(p.time).slice(0, 5) < '16:00');
   return `<div class="box"><h2>${multiDay() ? '🗓️ The plan · ' + esc(day(partDay(poll.parts[0]))) + ' – ' + esc(day(partDay(poll.parts[poll.parts.length - 1]))) : `${dayPlan ? '☀️ Your day' : '🌃 Your night'} · ${pastDay ? 'was ' + esc(day(pday)) : pday === today ? (dayPlan ? 'Today' : 'Tonight') : esc(day(pday))}`}${locked ? ' · set' : ''}</h2>${multiDay() ? [...new Set(poll.parts.map(partDay))].sort().filter(d => d >= today).map(d => weatherHtml(d, false, wday(d))).join('') : pastDay ? '' : weatherHtml(pday, dayPlan)}${rows}
     ${route ? `<div style="text-align:left;margin-top:8px"><a href="${route}" target="_blank" rel="noopener" style="color:#c2410c;font-weight:700;text-decoration:none">🗺️ The whole route in Maps ›</a></div>` : ''}
-    ${locked || poll.parts.every((_, pi) => poll.options.filter(o => o.part === pi).length <= 1) ? '' : `<div class="who" style="margin-top:6px">${winners.every(w => w >= 0) ? 'Every stop has a favourite. The organizer locks it in.' : 'The top place at each stop shows here as friends vote.'}</div>`}</div>`;
+    ${locked || pastDay ? '' : standFooter()}</div>`;
 }
 
 // When works? Friends tap every day and time they can make, or suggest another.
@@ -1087,6 +1124,24 @@ function threadHtml(pi, p) {
     ${can ? (open ? `${aboutChips}<textarea id="note-${pi}" maxlength="280" rows="2" placeholder="Say something about ${esc(about != null && poll.options[about] ? optName(poll.options[about]) : at)}">${esc(threadTyped[pi] || '')}</textarea>
       <div class="thread-btns"><button class="downbtn" data-postpart="${pi}">Post</button><button class="linkbtn" data-thread="${pi}">Cancel</button></div>`
       : `<button class="linkbtn" data-thread="${pi}">Reply</button>`) : ''}</div>`;
+}
+// "What's happened": the plan's log (get_poll's activity), newest first.
+// Lines since this phone last opened the plan are marked New; that "last
+// opened" moves on when you leave the page or come back to it later.
+let actAll = false;
+const seenKey = () => `nearby.seen.${code}`;
+let seenAt = (() => { try { return Number(localStorage.getItem(seenKey())) || 0; } catch { return 0; } })();
+const markSeen = () => { try { localStorage.setItem(seenKey(), String(Date.now())); } catch {} };
+addEventListener('pagehide', markSeen);
+document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') markSeen(); else { try { seenAt = Number(localStorage.getItem(seenKey())) || seenAt; } catch {} } });
+function activityHtml() {
+  const list = Array.isArray(poll.activity) ? [...poll.activity].reverse() : null;
+  if (!list || !list.length) return '';
+  const fresh = list.filter(a => seenAt && new Date(a.at).getTime() > seenAt).length;
+  const shown = actAll ? list : list.slice(0, 5);
+  return `<div class="box" id="activity"><h2>🔔 What’s happened${fresh ? ` · <span style="color:#c2410c">${fresh} new</span>` : ''}</h2>
+    ${shown.map(a => `<div class="actrow ${seenAt && new Date(a.at).getTime() > seenAt ? 'new' : ''}"><span>${esc(a.line)}</span><span class="who">${esc(agoText(a.at))}</span></div>`).join('')}
+    ${list.length > 5 ? `<button class="linkbtn" id="actmore">${actAll ? 'Show less' : `Show all ${list.length}`}</button>` : ''}</div>`;
 }
 // Notes and comments: anyone with the link can leave one and delete their own.
 // name: null when the name box is already at the top of the page.
