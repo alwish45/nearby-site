@@ -63,6 +63,8 @@
   .how button { flex:1; font:inherit; font-weight:700; font-size:14px; background:#fff; border:1.5px solid var(--line); border-radius:12px; padding:10px 4px; cursor:pointer; color:inherit; }
   .how button.on { background:var(--ink); color:#faf8f4; border-color:var(--ink); }
   .how b { display:block; font-size:18px; }
+  .fab { position:fixed; right:16px; bottom:calc(16px + env(safe-area-inset-bottom)); z-index:20; font:inherit; font-size:16px; font-weight:800; color:#fff; background:var(--ink); border:0; border-radius:999px; padding:13px 18px; box-shadow:0 4px 14px rgba(0,0,0,.22); cursor:pointer; }
+  body.has-fab { padding-bottom:84px; }
   .suggest { display:block; width:100%; font:inherit; font-weight:800; color:#c2410c; background:none; border:1.5px dashed var(--accent); border-radius:14px; padding:13px; margin:0 0 10px; cursor:pointer; }
   .pick { display:flex; align-items:center; gap:10px; width:100%; text-align:left; font:inherit; color:inherit; background:#fff; border:1px dashed var(--line); border-radius:12px; padding:10px 12px; margin:0 0 8px; }
   .pick { align-items:flex-start; border-style:solid; }
@@ -423,6 +425,7 @@ function render() {
     </div>` : ''}
     ${notesHtml(askName || savedName ? null : '', typedNote)}
     ${stopHtml()}
+    ${fabOn() ? '<button class="fab" id="fab" aria-label="Suggest a place or your own event">＋ Suggest or add an event</button>' : ''}
     ${go >= 0 && !final && poll.options[go].lat ? `<a class="cta" href="https://maps.google.com/?daddr=${poll.options[go].lat},${poll.options[go].lng}">Directions to ${invite ? '' : 'the leader: '}${esc(poll.options[go].business)}</a>` : ''}
     ${/iPhone|iPad|Android/i.test(navigator.userAgent) ? `<a class="cta" style="background:#fff;color:#14110d;border:1.5px solid #ece8e0" href="nearby://vote?p=${code}">Open in the near.by app</a>` : ''}`;
   // Only the places (data-i); time rows and the plan card share the .opt look.
@@ -460,6 +463,8 @@ function render() {
   bindPartTimes();
   app.querySelectorAll('[data-step]').forEach(b => b.addEventListener('click', () => document.getElementById(`step-${b.dataset.step}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })));
   document.getElementById('stopopen')?.addEventListener('click', () => { stopOpen = true; render(); });
+  document.body.classList.toggle('has-fab', !!document.getElementById('fab'));
+  document.getElementById('fab')?.addEventListener('click', () => { stopOpen = true; render(); document.getElementById('step-addstop')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   app.querySelectorAll('[data-dayadd]').forEach(b => b.addEventListener('click', async () => { const pl = dayPlanSlot(); dayOpen = false; await suggestTime(b.dataset.dayadd, pl.time, pl); }));
   document.getElementById('daymore')?.addEventListener('click', () => { dayOpen = !dayOpen; render(); });
   bindOwn();
@@ -481,6 +486,7 @@ function render() {
     threadOpen.add(pi); render(); document.getElementById(`note-${pi}`)?.focus();
   }));
   app.querySelectorAll('textarea[id^="note-"]').forEach(t => t.addEventListener('input', () => { threadTyped[Number(t.id.slice(5))] = t.value; }));
+  app.querySelectorAll('[data-about]').forEach(b => b.addEventListener('click', () => { const [pi, i] = b.dataset.about.split('|'); threadAbout[Number(pi)] = i === '' ? null : Number(i); render(); document.getElementById(`note-${pi}`)?.focus(); }));
   app.querySelectorAll('[data-del]').forEach(b => b.addEventListener('click', () => deleteNote(Number(b.dataset.del))));
 }
 
@@ -1064,13 +1070,19 @@ const notesOpen = () => !(poll.closed && new Date(poll.closes_at).getTime() < Da
 // Each stop's own thread ("Can we do 10:30?"), under its places. Shown when it
 // has comments or its "Comment" button is tapped. Needs comments with a part.
 const threadOpen = new Set(), threadTyped = {};
+const threadAbout = {}; // stop -> the option a comment is about (null: the time itself)
+const optName = o => o.own ? o.title : (o.business || o.title);
 function threadHtml(pi, p) {
   if (!Array.isArray(poll.comments) || !p) return '';
   const list = poll.comments.filter(c => c.part === pi), open = threadOpen.has(pi), can = notesOpen();
   const at = p.time ? t12(p.time) : 'this stop';
-  if (!list.length && !open) return can ? `<button class="linkbtn thread-open" data-thread="${pi}">💬 Comment on ${esc(at)}</button>` : '';
+  const opts = poll.options.map((o, i) => ({ o, i })).filter(x => x.o.part === pi);
+  if (!list.length && !open) return can ? `<button class="linkbtn thread-open" data-thread="${pi}">💬 Comment on ${esc(at)}${opts.length ? ' or a place' : ''}</button>` : '';
+  const about = threadAbout[pi] ?? null;
+  const aboutChips = opts.length ? `<div class="chips" style="margin:6px 0">${[`<button class="chip ${about == null ? 'on' : ''}" data-about="${pi}|">🕒 ${esc(at)}</button>`,
+    ...opts.map(({ o, i }) => `<button class="chip ${about === i ? 'on' : ''}" data-about="${pi}|${i}">${esc(optName(o))}</button>`)].join('')}</div>` : '';
   return `<div class="thread"><div class="thread-h">💬 About ${esc(at)}${list.length ? ' · ' + list.length : ''}</div>${list.map(noteRow).join('')}
-    ${can ? (open ? `<textarea id="note-${pi}" maxlength="300" rows="2" placeholder="Say something about ${esc(at)}">${esc(threadTyped[pi] || '')}</textarea>
+    ${can ? (open ? `${aboutChips}<textarea id="note-${pi}" maxlength="280" rows="2" placeholder="Say something about ${esc(about != null && poll.options[about] ? optName(poll.options[about]) : at)}">${esc(threadTyped[pi] || '')}</textarea>
       <div class="thread-btns"><button class="downbtn" data-postpart="${pi}">Post</button><button class="linkbtn" data-thread="${pi}">Cancel</button></div>`
       : `<button class="linkbtn" data-thread="${pi}">Reply</button>`) : ''}</div>`;
 }
@@ -1108,13 +1120,15 @@ function setTexts(phone) {
 // part: a stop's thread, or null for the whole plan.
 async function postNote(part = null) {
   const el = document.getElementById(part == null ? 'note' : `note-${part}`);
-  const body = el ? el.value.trim() : '';
-  if (!body || saving) return;
+  const typed = el ? el.value.trim() : '';
+  if (!typed || saving) return;
+  const ab = part != null ? threadAbout[part] : null, ao = ab != null ? poll.options[ab] : null;
+  const body = ao ? `About ${optName(ao)}: ${typed}`.slice(0, 300) : typed;
   if (part != null && !(await stopsUnchanged())) return; // a stop's number may have changed
   saving = true;
   try {
     poll = await rpc('add_poll_comment', { p_code: code, p_voter_key: me, p_name: myName(), p_body: body, ...(part == null ? {} : { p_part: part }) });
-    el.value = ''; if (part != null) { delete threadTyped[part]; threadOpen.delete(part); } lastWrite = Date.now();
+    el.value = ''; if (part != null) { delete threadTyped[part]; delete threadAbout[part]; threadOpen.delete(part); } lastWrite = Date.now();
   }
   catch (e) { alert(/too many/.test(e.message) ? 'That’s a lot of comments. Try again in a few minutes.' : /closed/.test(e.message) ? 'This vote has closed.' : "Couldn't post that. Try again."); }
   saving = false;
@@ -1348,12 +1362,15 @@ function stopKind(d, time = null) {
   if (/dessert|ice cream|bakery|coffee/.test(text)) return 'Dessert';
   return /food/.test(text) ? meal() : null;
 }
+// The floating "＋ Suggest or add an event": anyone on the link can suggest a
+// place or their own event before or after the plan, from anywhere on the page.
+const fabOn = () => !!poll && poll.can_add && !poll.final && !poll.closed && (poll.parts || []).length < 6 && !(adding && isStop(addPart));
 function stopHtml() {
   const parts = poll.parts || [];
   if (!poll.can_add || poll.final || poll.closed || parts.length >= 6) return '';
   if (!stopOpen && !(adding && isStop(addPart))) return `<button class="suggest" id="stopopen">＋ Add a stop before or after${parts.length ? '' : ' (make it a day or night)'}</button>`;
   const btn = (w, label) => `<button class="chip ${adding && addPart === w ? 'on' : ''}" data-suggest="${w}" aria-pressed="${adding && addPart === w}">${adding && addPart === w ? 'Done' : label}</button>`;
-  return `<div class="box"><h2>${parts.length ? 'Add to the plan' : 'Make a day or night of it'}</h2>
+  return `<div class="box" id="step-addstop"><h2>${parts.length ? 'Add to the plan' : 'Make a day or night of it'}</h2>
     <div class="m">Suggest something to do first or after: a place, or your own like a walk in the park${parts.length ? '' : '. The vote becomes a plan with a stop before or after'}.</div>
     <div class="chips" style="margin-top:8px">${btn('before', '⬆️ Before')}${btn('after', '⬇️ After')}</div>
     ${adding && isStop(addPart) ? ('part_times' in poll ? ownHtml(true) : '') + picksHtml() : ''}</div>`;
