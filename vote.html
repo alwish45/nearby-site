@@ -726,12 +726,32 @@ async function suggestTime(d, t, override = null) {
 
 // Suggest another place: what's on near the first option, on the vote's day.
 let adding = false, addPart = null, nearby = null; // addPart: the plan part a place is being suggested for
+// Where suggestions are measured from: the stop being suggested for (its first
+// place on the map), else the stop before it, else the plan's first place.
+// Each spot's list is fetched once (nearbyCache).
+let nearbyAt = null; const nearbyCache = {};
+function anchorFor(pi) {
+  const located = part => (poll.options || []).find(o => o.lat && o.part === part);
+  if (typeof pi === 'number') {
+    const here = located(pi), before = pi > 0 ? located(pi - 1) : null;
+    if (here) return here;
+    if (before) return before;
+  }
+  if (pi === 'before') return located(0) || (poll.options || []).find(o => o.lat);
+  if (pi === 'after') return located((poll.parts || []).length - 1) || (poll.options || []).find(o => o.lat);
+  return (poll.options || []).find(o => o.lat) || null;
+}
 // The vote's day when it's later than today ("Thursday?"), else null.
 const futureDay = () => (poll && poll.plan_day && poll.plan_day > isoDay(utahNow()) ? poll.plan_day : null);
 async function loadNearby() {
-  if (nearby || !poll) return;
-  const at = poll.options.find(o => o.lat);
-  if (!at) { nearby = []; return; }
+  if (!poll) return;
+  const at = anchorFor(addPart);
+  if (!at) { nearby = []; nearbyAt = null; return; }
+  const key = `${at.lat},${at.lng}`;
+  if (nearbyAt && `${nearbyAt.lat},${nearbyAt.lng}` === key && nearby) return;
+  nearbyAt = at;
+  if (nearbyCache[key]) { nearby = nearbyCache[key]; render(); return; }
+  nearby = null;
   try {
     const day = futureDay();
     if (day) {
@@ -752,7 +772,8 @@ async function loadNearby() {
       nearby = await rpc('deals_near_v3', { in_lat: at.lat, in_lng: at.lng, in_radius_m: 8000 });
     }
   } catch { nearby = []; }
-  render();
+  nearbyCache[key] = nearby;
+  if (nearbyAt === at) render();
 }
 // The same rules as the app's vote list: only somewhere the group could go
 // today. No gyms, massage or spas, no rewards programs, no catering, holiday
@@ -888,7 +909,8 @@ function feedBody() {
 function picksHtml() {
   if (!nearby) return '<p class="sub">Loading what’s on nearby…</p>';
   if (!feedPool().length) return '<p class="sub">Nothing else on nearby right now. In the near.by app you can search any area.</p>';
-  const dayNote = futureDay() ? `<p class="who" style="margin:0 0 8px">What’s on ${esc(day(futureDay()))}, near ${esc(poll.options.find(o => o.lat)?.business || 'the first place')}.</p>` : '';
+  const from = nearbyAt ? (nearbyAt.own ? nearbyAt.title : nearbyAt.business || nearbyAt.title) : '';
+  const dayNote = `<p class="who" style="margin:0 0 8px">${futureDay() ? `What’s on ${esc(day(futureDay()))}` : 'What’s on'}${from ? `, closer to ${esc(from)} (distances from there)` : ''}.</p>`;
   return `<div class="feed">${dayNote}<input id="find" type="search" maxlength="40" autocomplete="off" placeholder="Search places, food, events…" value="${esc(feed.q)}"><div id="feedbody">${feedBody()}</div></div>`;
 }
 // Typing redraws just the chips and cards, so the search box keeps focus.
