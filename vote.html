@@ -1021,6 +1021,8 @@ function slotOk(d, slot) {
   if (end <= start) end += 1440; // past midnight
   return start < b && end > a;
 }
+// Lunch is somewhere to eat, open at lunchtime (not a pottery class at 1pm or a whiskey flight).
+const isLunch = d => catOk(d, 'food') && !DRINK_TITLE.test(d.title || '') && !/whiske?y|bourbon|\bflights?\b|tasting/i.test(d.title || '');
 const findText = d => `${d.title || ''} ${d.business_name || ''} ${d.category || ''} ${tagsOf(d).join(' ')} ${d.price_info || ''} ${d.description || ''}`.toLowerCase();
 function feedPool() {
   // A new stop before or after: nothing already in the vote.
@@ -1064,7 +1066,7 @@ function feedCard(d) {
 }
 function feedBody() {
   const q = feed.q.trim().toLowerCase();
-  const scoped = feedPool().filter(d => (!q || findText(d).includes(q)) && (!feed.mi || (d.distance_m != null && d.distance_m <= feed.mi * 1609.34)) && slotOk(d, feed.slot) && (!feed.under || isUnder(d, feed.under)));
+  const scoped = feedPool().filter(d => (!q || findText(d).includes(q)) && (!feed.mi || (d.distance_m != null && d.distance_m <= feed.mi * 1609.34)) && slotOk(d, feed.slot) && (feed.slot !== 'lunch' || isLunch(d)) && (!feed.under || isUnder(d, feed.under)));
   const chips = (rows, on, attr, count) => `<div class="chips">${rows.map(([k, label, icon]) => {
     const n = count ? count(k) : null;
     if (count && k && !n && k !== on) return ''; // nothing of that kind here
