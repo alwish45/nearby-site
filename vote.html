@@ -8,7 +8,7 @@
 <meta property="og:description" content="See the plan, vote on places and times, or suggest your own. No app or account needed.">
 <meta name="description" content="See the plan, vote on places and times, or suggest your own. No app or account needed.">
 <style>
-  :root { --bg:#faf8f4; --ink:#14110d; --muted:#6b655b; --accent:#e8542a; --line:#ece8e0; --soft:#fff1e6; --win:#ffe2cc; }
+  :root { --bg:#faf8f4; --ink:#14110d; --muted:#6b655b; --accent:#e8542a; --fill:#c2410c; --line:#ece8e0; --soft:#fff1e6; --win:#ffe2cc; }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
   main { max-width:560px; margin:0 auto; padding:28px 16px 64px; }
@@ -29,22 +29,23 @@
   .who { color:var(--muted); font-size:12px; margin-top:4px; }
   .n { font-size:22px; font-weight:800; }
   .cta { display:block; text-align:center; text-decoration:none; background:var(--ink); color:#faf8f4; font-weight:800; border-radius:14px; padding:15px; margin-top:16px; }
-  .cta.orange { background:var(--accent); }
+  .cta.orange { background:var(--fill); }
   .note { color:var(--muted); font-size:13px; text-align:center; margin-top:10px; }
   .err { color:#c0392b; }
-  .down { background:var(--soft); border:1.5px solid #f6dcc2; border-radius:14px; padding:14px; margin-top:6px; }
+  .down { background:var(--soft); border:1.5px solid #f6dcc2; border-radius:14px; padding:14px; margin:12px 0; }
+  h2.sec { font-size:13px; letter-spacing:.6px; text-transform:uppercase; color:var(--muted); margin:22px 0 4px; text-align:left; }
   .down h2 { font-size:18px; margin:0 0 2px; }
-  .downbtn { display:block; width:100%; margin-top:10px; font:inherit; font-weight:800; font-size:16px; border-radius:12px; padding:13px; border:1.5px solid var(--accent); background:var(--accent); color:#fff; cursor:pointer; }
+  .downbtn { display:block; width:100%; margin-top:10px; font:inherit; font-weight:800; font-size:16px; border-radius:12px; padding:13px; border:1.5px solid var(--fill); background:var(--fill); color:#fff; cursor:pointer; }
   .downbtn.on { background:#fff; color:#c2410c; }
   .thumb { width:56px; height:56px; border-radius:12px; object-fit:cover; flex:none; background:var(--line); }
   .more { color:var(--muted); font-size:13px; margin:-4px 2px 12px; line-height:1.4; }
-  .more a { color:#c2410c; font-weight:700; text-decoration:none; white-space:nowrap; }
+  .more a { color:#c2410c; font-weight:700; text-decoration:none; white-space:nowrap; display:inline-block; padding:12px 0; }
   .box { background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:14px; margin:0 0 10px; }
   .cnote { text-align:left; border-top:1px solid var(--line); padding:9px 0; font-size:15px; line-height:1.4; overflow-wrap:anywhere; }
   .thread { text-align:left; background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:10px 12px; margin:8px 0 4px; }
   .thread-h { font-size:14px; font-weight:800; color:var(--muted); }
   .thread-btns { display:flex; gap:10px; align-items:center; margin-top:6px; }
-  .thread-btns .downbtn { flex:1; margin:0; }
+  .thread-btns .downbtn { flex:1; margin:0; background:#fff; color:#c2410c; border-color:#f6dcc2; }
   .thread-btns .linkbtn { padding:0; }
   .edittoggle { display:block; width:100%; text-align:left; background:#fff; border:1.5px solid var(--accent); border-radius:14px; padding:10px 14px; margin:0 0 12px; font:inherit; cursor:pointer; }
   .edittoggle b { display:block; color:#c2410c; font-size:15px; }
@@ -55,7 +56,7 @@
   .movebtn { display:block; margin:2px 0 6px; font-size:14px; }
   .movebox { text-align:left; background:#fff; border:1.5px dashed var(--accent); border-radius:14px; padding:10px 12px; margin:4px 0 8px; }
   .thread-open { display:block; margin:8px 0 4px; }
-  .cnote .del { background:none; border:0; font:inherit; font-size:12px; color:var(--muted); cursor:pointer; padding:0 0 0 6px; }
+  .cnote .del { background:none; border:0; font:inherit; font-size:12px; color:var(--muted); cursor:pointer; padding:12px 8px; }
   textarea#note, .thread textarea { display:block; width:100%; box-sizing:border-box; font:inherit; font-size:16px; border:1.5px solid var(--line); border-radius:12px; padding:12px; margin-top:8px; resize:vertical; }
   .box h2 { font-size:13px; letter-spacing:.6px; text-transform:uppercase; color:var(--muted); margin:0 0 8px; }
   .how { display:flex; gap:8px; }
@@ -66,7 +67,7 @@
   .pick { display:flex; align-items:center; gap:10px; width:100%; text-align:left; font:inherit; color:inherit; background:#fff; border:1px dashed var(--line); border-radius:12px; padding:10px 12px; margin:0 0 8px; }
   .pick { align-items:flex-start; border-style:solid; }
   .pick .plus { font:inherit; color:var(--accent); font-weight:800; font-size:14px; white-space:nowrap; align-self:center; background:var(--soft); border:1.5px solid #f6dcc2; border-radius:999px; padding:8px 12px; cursor:pointer; }
-  .detbtn { font:inherit; font-size:13px; font-weight:800; color:#c2410c; background:#fff6ec; border:1px solid #f6dcc2; border-radius:999px; padding:3px 10px; margin-right:8px; cursor:pointer; }
+  .detbtn { font:inherit; font-size:13px; font-weight:800; color:#c2410c; background:#fff6ec; border:1px solid #f6dcc2; border-radius:999px; padding:10px 14px; margin-right:8px; cursor:pointer; }
   .details { background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:12px; margin:-6px 0 14px; text-align:left; }
   .details img { width:100%; max-height:180px; object-fit:cover; border-radius:10px; margin-bottom:8px; }
   .drow { display:flex; gap:8px; font-size:14px; margin-top:6px; line-height:1.4; }
@@ -104,35 +105,36 @@
   .opt.final-pick { border-color:#1f7a3d; border-width:2px; }
   .opt.dim { opacity:.55; }
   .rsvp { display:flex; gap:8px; margin-top:10px; }
-  .rsvp button { flex:1; font:inherit; font-weight:800; font-size:14px; border:1.5px solid var(--accent); border-radius:12px; padding:11px 4px; background:#fff; color:#c2410c; cursor:pointer; }
-  .rsvp button.on { background:var(--accent); color:#fff; }
+  .rsvp button { flex:1; font:inherit; font-weight:800; font-size:15px; border:1.5px solid var(--fill); border-radius:12px; padding:13px 4px; background:var(--fill); color:#fff; cursor:pointer; min-height:48px; }
+  .rsvp button.on { background:#7c2d12; border-color:#7c2d12; }
+  .rsvp button.on::before { content:'✓ '; }
   .rsvp button:disabled { opacity:.5; cursor:default; }
   .hop { color:var(--muted); font-size:13px; padding:2px 0 2px 72px; text-align:left; }
   .namerow { display:flex; gap:8px; align-items:center; }
   .namerow input { flex:1; margin:0; }
-  .namerow button { flex:none; font:inherit; font-weight:800; border:0; border-radius:10px; padding:10px 14px; background:var(--accent); color:#fff; cursor:pointer; }
+  .namerow button { flex:none; font:inherit; font-weight:800; border:0; border-radius:10px; padding:12px 16px; background:var(--fill); color:#fff; cursor:pointer; }
   .voting-as { color:var(--muted); font-size:14px; margin:0 0 10px; text-align:left; }
   .voting-as button { background:none; border:0; font:inherit; color:#c2410c; font-weight:800; cursor:pointer; padding:0; }
   .part-head { display:flex; align-items:center; gap:8px; margin:14px 0 8px; }
-  .pnum { width:24px; height:24px; border-radius:50%; background:var(--accent); color:#fff; font-weight:800; font-size:14px; display:inline-flex; align-items:center; justify-content:center; flex:none; }
+  .pnum { width:24px; height:24px; border-radius:50%; background:var(--ink); color:#fff; font-weight:800; font-size:14px; display:inline-flex; align-items:center; justify-content:center; flex:none; }
   .pname { flex:1; font-size:18px; font-weight:800; text-align:left; }
   .pstate { font-size:14px; font-weight:700; color:#9a3412; }
   .off { color:#b4441c; font-size:13px; font-weight:700; margin-top:3px; }
   .on { color:#1f7a3d; font-size:13px; font-weight:700; margin-top:3px; }
   .night-row { display:flex; gap:10px; text-align:left; border-top:1px solid var(--line); padding:9px 0; }
-  .night-row a { color:#c2410c; font-weight:700; text-decoration:none; }
+  .night-row a { color:#c2410c; font-weight:700; text-decoration:none; display:inline-block; padding:12px 0; }
   .night-row .ntime { width:62px; flex:none; font-weight:800; color:#c2410c; }
   .zoom-row { display:flex; align-items:center; gap:6px; }
   .zoom-row .chips { flex:1; padding-bottom:4px; }
   .zstep { flex:none; width:34px; height:34px; border-radius:50%; font:inherit; font-size:18px; font-weight:800; background:#fff; border:1.5px solid var(--line); cursor:pointer; }
   .zstep:disabled { opacity:.35; cursor:default; }
-  .linkbtn { background:none; border:0; font:inherit; font-weight:800; color:#c2410c; padding:6px 0 0; cursor:pointer; text-align:left; }
+  .linkbtn { background:none; border:0; font:inherit; font-weight:800; color:#c2410c; padding:12px 0; min-height:44px; cursor:pointer; text-align:left; }
   .pick .about { color:#2b2722; font-size:13px; line-height:1.35; margin-top:3px; }
   .thumb.icon { display:flex; align-items:center; justify-content:center; font-size:26px; background:var(--soft); }
   #find { display:block; width:100%; box-sizing:border-box; font:inherit; font-size:16px; border:1.5px solid var(--line); border-radius:12px; padding:11px 12px; margin:0 0 8px; background:#fff; }
   .chips { display:flex; gap:6px; overflow-x:auto; padding:0 0 8px; margin:0 0 2px; scrollbar-width:none; }
   .chips::-webkit-scrollbar { display:none; }
-  .chip { flex:none; font:inherit; font-size:13px; font-weight:700; background:#fff; color:inherit; border:1.5px solid var(--line); border-radius:999px; padding:6px 11px; cursor:pointer; }
+  .chip { flex:none; font:inherit; font-size:13px; font-weight:700; background:#fff; color:inherit; border:1.5px solid var(--line); border-radius:999px; padding:11px 14px; font-size:14px; cursor:pointer; }
   .chip.on { background:var(--ink); color:#faf8f4; border-color:var(--ink); }
   .chip .c { color:var(--muted); font-weight:600; }
   .chip.on .c { color:#d6d0c6; }
@@ -143,7 +145,7 @@
   .steps { background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:10px 12px; margin:0 0 12px; text-align:left; }
   .steps.done { background:#eefaf1; border-color:#9fd8b0; }
   .steps-h { font-size:13px; letter-spacing:.6px; text-transform:uppercase; color:var(--muted); font-weight:800; margin-bottom:2px; }
-  .step { display:flex; align-items:center; gap:10px; width:100%; background:none; border:0; font:inherit; font-weight:700; color:inherit; padding:7px 0; cursor:pointer; text-align:left; }
+  .step { display:flex; align-items:center; gap:10px; width:100%; background:none; border:0; font:inherit; font-weight:700; color:inherit; padding:10px 0; min-height:44px; cursor:pointer; text-align:left; }
   .step .dotn { width:24px; height:24px; border-radius:50%; background:var(--accent); color:#fff; display:inline-flex; align-items:center; justify-content:center; font-size:13px; flex:none; }
   .step.ok { color:var(--muted); }
   .step.ok .dotn { background:#1f7a3d; }
@@ -159,7 +161,7 @@
 <body>
 <main>
   <div class="logo">near<span>.</span>by</div>
-  <div id="app"><p class="sub">Loading the vote…</p></div>
+  <div id="app"><p class="sub">Loading the plan…</p></div>
   <a class="cta orange" id="getapp" href="https://apps.apple.com/us/app/id6812937568">Make your own plan on near.by</a>
   <p class="note">Pick things happening nearby, invite your friends, settle it together and go. Free.</p>
 </main>
@@ -263,7 +265,7 @@ async function moveOption(i, to, time) {
     poll = await rpc('move_poll_option', { p_code: code, p_creator_key: me, p_option: i,
       ...(to != null ? { p_to_part: to } : { p_time: time, p_date: from.date || planDayOf() || null, p_stop_name: stopKind(o, time) }) });
     moveOpen = null; threadOpen.clear(); adding = false; lastWrite = Date.now();
-  } catch (e) { alert(/could not find the function/i.test(e.message) ? 'Moving places isn’t switched on yet.' : /full|6 parts/.test(e.message) ? 'That’s full: a plan has up to 6 times, each with up to 6 places.' : /plan is set/.test(e.message) ? 'The plan is set, so it can’t change now.' : "Couldn't move that. Try again."); }
+  } catch (e) { alert(/could not find the function/i.test(e.message) ? 'Moving places isn’t switched on yet.' : /full|6 parts/.test(e.message) ? 'That’s full: a plan has up to 6 stops, each with up to 6 places.' : /plan is set/.test(e.message) ? 'The plan is set, so it can’t change now.' : "Couldn't move that. Try again."); }
   saving = false;
   render();
 }
@@ -317,7 +319,7 @@ const stopSig = x => ((x && x.parts) || []).map(q => `${q.name}@${q.date || ''} 
 let shownSig = '', shownParts = [];
 function render() {
   shownSig = stopSig(poll); shownParts = (poll && poll.parts) || [];
-  if (!poll) { app.innerHTML = '<h1>Vote not found</h1><p class="sub">The link may be incomplete. Ask your friend to send it again.</p>'; return; }
+  if (!poll) { app.innerHTML = '<h1>Plan not found</h1><p class="sub">The link may be incomplete. Ask your friend to send it again.</p>'; return; }
   const total = poll.counts.reduce((a, b) => a + b, 0);
   const top = total ? Math.max(...poll.counts) : 0;
   // A tie has no leader yet: no trophy and no directions until someone breaks it.
@@ -339,7 +341,7 @@ function render() {
   const typedNote = document.getElementById('note')?.value || '';
   saveOwnDraft();
   // The name box stays until a name is saved, then "Voting as Sam · Change".
-  if (nameAsk === null) nameAsk = !savedName;
+  if (nameAsk === null) nameAsk = false; // asked on the first tap instead (the name sheet)
   const askName = nameAsk && !poll.closed;
   // Locked in by the person who started it.
   const final = poll.final || null;
@@ -361,16 +363,19 @@ function render() {
   app.innerHTML = `
     <h1>${esc(poll.title || (invite ? 'Who’s in?' : 'Where should we go?'))}</h1>
     ${peopleHtml()}
-    ${!poll.closed && !poll.final ? '<button class="linkbtn" id="invitemore" style="display:block;margin:2px 0 8px">👋 Invite more friends</button>' : ''}
+    ${poll.is_creator && !poll.closed && !poll.final ? '<button class="downbtn" id="invitemore" style="margin:4px 0 12px">📣 Send the link to friends</button>' : ''}
     <p class="sub">${invite
       ? (poll.closed ? 'This invite has closed.' : 'Tap “I’m down” if you’re in. No app needed.')
-      : `${poll.closed ? 'This vote has closed.' : final ? 'The plan is set. Say if you’re in below.' : (poll.parts || []).length ? 'Help shape this plan: tick the times that work, vote on places, suggest your own and comment on any time. No app needed.' : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
+      : `${poll.closed ? 'This vote has closed.' : final ? 'The plan is set. Say if you’re in below.' : (poll.parts || []).length ? 'Tick the times you can make and vote on places. No app needed.' : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
     ${pastDay ? `<p class="off" style="text-align:left">This was for ${esc(day(planDayOf()))}.</p>` : ''}
     ${!poll.closed && !final && poll.closes_at ? `<p class="who" style="text-align:left;margin:-4px 0 8px">Voting closes ${esc(new Date(poll.closes_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Denver' }))}</p>` : ''}
     ${askName ? `<div class="namecard"><div class="t">👋 What’s your name?</div><div class="m">So your friends know who voted and who’s in.</div>
       <div class="namerow"><input id="name" maxlength="30" autocomplete="given-name" placeholder="Your first name" value="${esc(savedName)}"><button id="savename">Save</button></div></div>`
       : !poll.closed && savedName ? `<p class="voting-as">Voting as <b>${esc(savedName)}</b> · <button id="chname">Change</button></p>` : ''}
+    ${parted ? nightHtml(final ? final.parts : partWin, people, !!final, pastDay) : ''}
+    ${parted && rsvpShown ? rsvpHtml(final, fullyClosed) : ''}
     ${stepsHtml(sections, mine, final, invite, parted, rsvpShown)}
+    ${parted && !final && !poll.closed ? '<h2 class="sec">Help shape it</h2>' : ''}
     ${final ? finalHtml(final) : !invite && !(parted && sections.every(x => x.idxs.length === 1)) ? summaryHtml(sections, partWin, win, lead, mine, people) : ''}
     ${!parted && !invite ? '<div id="step-vote"></div>' : ''}
     ${parted && Array.isArray(poll.times) && !final && !poll.closed && !multiDay() ? dayVoteHtml() : ''}
@@ -381,7 +386,7 @@ function render() {
       const fixed = !!p && idxs.length === 1;
       const hop = p && pi > 0 && partDay(poll.parts[pi - 1]) === partDay(p) ? hopText(poll.options.filter(o => o.part === pi - 1), poll.options.filter(o => o.part === pi)) : null;
       const dhead = (hop ? `<div class="hopbetween">${esc(hop)}</div>` : '') + (p && multiDay() && (pi === 0 || partDay(poll.parts[pi - 1]) !== partDay(p)) ? `<h3 class="dayhead">📅 ${esc(longDay(partDay(p)))}${partDay(p) >= isoDay(utahNow()) ? weatherHtml(partDay(p)) : ''}</h3>` : '');
-      const head = dhead + (p ? `<div class="part-head" id="step-part-${pi}"><span class="pnum">${pi + 1}</span><span class="pname">${p.time ? esc(t12(p.time)) : esc(p.name)}</span>${editing && p && poll.is_creator && !final && !poll.closed && poll.parts.length > 1 ? `<button class="rmstop" data-rmstop="${pi}" aria-label="Remove this stop">✕</button>` : ''}<span class="pstate">${final ? '✅ Set' : fixed ? (poll.options[idxs[0]].added_by ? `💡 From ${esc(poll.options[idxs[0]].added_by)}` : '📌 Set') : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span></div>${'part_times' in poll && !final && !poll.closed ? partTimesHtml(pi, p) : ''}` : '');
+      const head = dhead + (p ? `<div class="part-head" id="step-part-${pi}"><span class="pnum">${pi + 1}</span><span class="pname">${p.time ? esc(t12(p.time)) : esc(p.name)}</span>${editing && p && poll.is_creator && !final && !poll.closed && poll.parts.length > 1 ? `<button class="rmstop" data-rmstop="${pi}" aria-label="Remove this stop">✕</button>` : ''}<span class="pstate">${final ? '✅ Set' : fixed ? (poll.options[idxs[0]].added_by ? `💡 From ${esc(poll.options[idxs[0]].added_by)}` : '') : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span></div>${'part_times' in poll && !final && !poll.closed ? partTimesHtml(pi, p) : ''}` : '');
       const opts = idxs.map(i => {
         const o = poll.options[i];
         const n = poll.counts[i] || 0, pct = people && !fixed ? Math.min(100, Math.round(n / people * 100)) : 0;
@@ -408,19 +413,18 @@ function render() {
         ? `<button class="suggest" data-suggest="${pi ?? ''}">${open ? 'Done' : p ? `＋ Suggest another place${p.time ? ` for ${esc(t12(p.time))}` : ''}` : '＋ Suggest another place'}</button>${open ? (p && 'part_times' in poll ? ownHtml(/walk|park|hang|something to do|activity/i.test(p.name)) : '') + picksHtml() : ''}` : '';
       return head + opts + sug + (p ? threadHtml(pi, p) : '');
     }).join('')}
-    ${parted ? nightHtml(final ? final.parts : partWin, people, !!final, pastDay) : ''}
     ${poll.how && !invite && !parted && !final && foodVote() ? `<div class="box"><h2>How should we do it?</h2><div class="how">${[['dine_in', '🍽️ Dine in'], ['pickup', '🛍️ Pickup'], ['delivery', '🚗 Delivery']].map(([k, l]) => `<button data-how="${k}" class="${poll.my_how === k ? 'on' : ''}" ${fullyClosed ? 'disabled' : ''}>${l}<b>${poll.how[k] || 0}</b></button>`).join('')}</div><div class="who">A head count for the group. Check with the place that it offers pickup or delivery.</div></div>` : ''}
     ${parted || final ? '' : whenHtml(invite ? 0 : win)}
     ${lead.length > 1 && !parted && !poll.closed && !final ? '<p class="sub" style="text-align:center;color:#9a3412;font-weight:700">It’s a tie. One more vote settles it.</p>' : ''}
-    ${rsvpShown ? rsvpHtml(final, fullyClosed) : (go >= 0 || parted) ? `<div class="down">
+    ${parted && rsvpShown ? '' : rsvpShown ? rsvpHtml(final, fullyClosed) : (go >= 0 || parted) ? `<div class="down">
       <h2>${(poll.down || []).length ? `🙌 ${poll.down.length} ${poll.down.length === 1 ? 'person is' : 'people are'} down` : 'Who’s down?'}</h2>
       <div class="m">${(poll.down || []).length ? esc(poll.down.join(', ')) : parted ? 'Tap if you’re in for the night.' : `Tap if you’re in for ${esc(poll.options[go].business || 'the winner')}.`}</div>
       <button class="downbtn ${poll.i_am_down ? 'on' : ''}" id="downbtn" ${fullyClosed ? 'disabled' : ''}>${poll.i_am_down ? '✓ You’re down (tap to undo)' : 'I’m down 🙌'}</button>
     </div>` : ''}
-    ${notesHtml(null, typedNote)}
+    ${notesHtml(askName || savedName ? null : '', typedNote)}
     ${stopHtml()}
     ${go >= 0 && !final && poll.options[go].lat ? `<a class="cta" href="https://maps.google.com/?daddr=${poll.options[go].lat},${poll.options[go].lng}">Directions to ${invite ? '' : 'the leader: '}${esc(poll.options[go].business)}</a>` : ''}
-    <a class="cta" style="background:#fff;color:#14110d;border:1.5px solid #ece8e0" href="nearby://vote?p=${code}">Open in the near.by app</a>`;
+    ${/iPhone|iPad|Android/i.test(navigator.userAgent) ? `<a class="cta" style="background:#fff;color:#14110d;border:1.5px solid #ece8e0" href="nearby://vote?p=${code}">Open in the near.by app</a>` : ''}`;
   // Only the places (data-i); time rows and the plan card share the .opt look.
   app.querySelectorAll('.opt[data-i]').forEach(b => b.addEventListener('click', () => vote(Number(b.dataset.i))));
   document.getElementById('downbtn')?.addEventListener('click', () => setDown(!poll.i_am_down));
@@ -504,9 +508,9 @@ function nightHtml(winners, people, locked = false, pastDay = false) {
   const located = stops.filter(o => o && o.lat);
   const route = located.length >= 2 ? `https://www.google.com/maps/dir/?api=1&origin=${located[0].lat},${located[0].lng}&destination=${located[located.length - 1].lat},${located[located.length - 1].lng}${located.length > 2 ? '&waypoints=' + encodeURIComponent(located.slice(1, -1).map(o => `${o.lat},${o.lng}`).join('|')) : ''}` : '';
   const dayPlan = poll.parts.some(p => p.time && String(p.time).slice(0, 5) < '16:00');
-  return `<div class="box"><h2>${multiDay() ? '🗓️ Your plans · ' + esc(day(partDay(poll.parts[0]))) + ' – ' + esc(day(partDay(poll.parts[poll.parts.length - 1]))) : `${dayPlan ? '☀️ Your day' : '🌃 Your night'} · ${pastDay ? 'was ' + esc(day(pday)) : pday === today ? (dayPlan ? 'Today' : 'Tonight') : esc(day(pday))}`}${locked ? ' · set' : ''}</h2>${multiDay() ? [...new Set(poll.parts.map(partDay))].sort().filter(d => d >= today).map(d => weatherHtml(d, false, wday(d))).join('') : pastDay ? '' : weatherHtml(pday, dayPlan)}${rows}
+  return `<div class="box"><h2>${multiDay() ? '🗓️ The plan · ' + esc(day(partDay(poll.parts[0]))) + ' – ' + esc(day(partDay(poll.parts[poll.parts.length - 1]))) : `${dayPlan ? '☀️ Your day' : '🌃 Your night'} · ${pastDay ? 'was ' + esc(day(pday)) : pday === today ? (dayPlan ? 'Today' : 'Tonight') : esc(day(pday))}`}${locked ? ' · set' : ''}</h2>${multiDay() ? [...new Set(poll.parts.map(partDay))].sort().filter(d => d >= today).map(d => weatherHtml(d, false, wday(d))).join('') : pastDay ? '' : weatherHtml(pday, dayPlan)}${rows}
     ${route ? `<div style="text-align:left;margin-top:8px"><a href="${route}" target="_blank" rel="noopener" style="color:#c2410c;font-weight:700;text-decoration:none">🗺️ The whole route in Maps ›</a></div>` : ''}
-    ${locked ? '' : `<div class="who" style="margin-top:6px">${winners.every(w => w >= 0) ? 'Every part has a leader. The person who started it locks in the final plan.' : 'Each part’s leader shows here as friends vote.'}</div>`}</div>`;
+    ${locked ? '' : `<div class="who" style="margin-top:6px">${winners.every(w => w >= 0) ? 'Every stop has a favourite. The organizer locks it in.' : 'The top place at each stop shows here as friends vote.'}</div>`}</div>`;
 }
 
 // When works? Friends tap every day and time they can make, or suggest another.
@@ -1188,12 +1192,12 @@ function partTimesHtml(pi, p) {
   const best = bestPartTime(pi);
   const chips = list.map(t => {
     const r = at(t), lead = t === best || (!best && t === planned && rows.length);
-    return `<button class="chip ${lead ? 'fit' : ''} ${r && r.mine ? 'on' : ''}" data-ptime="${pi}|${t}" aria-pressed="${!!(r && r.mine)}">${r && r.mine ? '✓ ' : ''}${esc(t12(t))}${t === planned ? ' · plan' : ''}${r ? ` <span class="c">${r.n}</span>` : ''}</button>`;
+    return `<button class="chip ${lead ? 'fit' : ''} ${r && r.mine ? 'on' : ''}" data-ptime="${pi}|${t}" aria-pressed="${!!(r && r.mine)}">${r && r.mine ? '✓ ' : ''}${esc(t12(t))}${t === planned && !(r && r.mine) ? '?' : ''}${r ? ` <span class="c">${r.n}</span>` : ''}</button>`;
   }).join('');
   const others = ptOpen.has(pi) ? ALL_TIMES.filter(t => !list.includes(t) && (!planned || Math.abs(mins(t) - mins(planned)) <= 180))
     .map(t => `<button class="chip" data-ptime="${pi}|${t}">${esc(t12(t))}</button>`).join('') : '';
   const who = rows.length ? `<div class="fit-line">${esc(list.filter(at).map(t => `${t12(t)}: ${at(t).names.join(', ')}`).join(' · '))}</div>` : '';
-  return `<div class="ptimes"><div class="who" style="margin:0">🕒 ${rows.length ? 'Tap every time that works for you' : planned ? `Does ${esc(t12(planned))} work? Tap it, or suggest another time` : 'When? Suggest a time'}</div>
+  return `<div class="ptimes"><div class="who" style="margin:0">🕒 ${rows.length ? 'Tap every time that works for you' : planned ? `Can you make ${esc(t12(planned))}? Tap it, or suggest another time` : 'When? Suggest a time'}</div>
     <div class="chips">${chips}<button class="chip dash" data-pmore="${pi}">${ptOpen.has(pi) ? 'Cancel' : '＋ Other time'}</button></div>
     ${others ? `<div class="chips">${others}</div>` : ''}${who}
     ${best ? `<div class="on">⭐ ${esc(t12(best))} works for the most so far</div>` : ''}</div>`;
@@ -1277,7 +1281,7 @@ async function addOwn(own) {
     try {
       poll = await rpc('add_poll_option', { p_code: code, p_voter_key: me, p_name: myName(), p_part: addPart, p_title: own.title, p_place: own.place, p_lat: own.lat, p_lng: own.lng });
       clearOwn(); if (!poll.can_add) adding = false; render();
-    } catch (e) { alert(/could not find the function/i.test(e.message) ? 'Adding your own stops isn’t switched on yet.' : /part is full/.test(e.message) ? 'That part already has 6 places.' : /full/.test(e.message) ? 'This vote is full.' : /plan is set/.test(e.message) ? 'The plan is set, so it can’t change now.' : "Couldn't add that. Try again."); }
+    } catch (e) { alert(/could not find the function/i.test(e.message) ? 'Adding your own stops isn’t switched on yet.' : /part is full/.test(e.message) ? 'That stop already has 6 places.' : /full/.test(e.message) ? 'This vote is full.' : /plan is set/.test(e.message) ? 'The plan is set, so it can’t change now.' : "Couldn't add that. Try again."); }
   });
 }
 
@@ -1302,7 +1306,7 @@ function stepsHtml(sections, mine, final, invite, parted, rsvpShown) {
       const ticked = x => (poll.part_times || []).some(r => r.part === x.pi && r.mine);
       if (timed.length) {
         const done = timed.filter(ticked).length, next = timed.find(x => !ticked(x)) || timed[0];
-        steps.push([`part-${next.pi}`, timed.length === 1 ? `Tick the time if it works for you (or suggest another)` : `Tick the times that work for you (${done} of ${timed.length} done)`, done === timed.length]);
+        steps.push([`part-${next.pi}`, timed.length === 1 ? `Tick the time if it works for you (or suggest another)` : `Tick the times you can make (${done}/${timed.length})`, done === timed.length]);
       }
     }
     if (parted) {
@@ -1317,7 +1321,7 @@ function stepsHtml(sections, mine, final, invite, parted, rsvpShown) {
   }
   if (!steps.length) return '';
   if (steps.every(x => x[2])) return `<div class="steps done"><b>✅ You’re all set.</b> ${final ? 'See you there.' : 'Change anything below until it’s locked in.'}</div>`;
-  return `<div class="steps"><div class="steps-h">Your turn: tap a step to jump there</div>${steps.map(([id, label, done], k) =>
+  return `<div class="steps"><div class="steps-h">Your turn</div>${steps.map(([id, label, done], k) =>
     `<button class="step ${done ? 'ok' : ''}" data-step="${id}"><span class="dotn">${done ? '✓' : k + 1}</span>${esc(label)}${done ? '' : '<span class="go">›</span>'}</button>`).join('')}</div>`;
 }
 // A restaurant's happy hour ("half-price apps") is a meal; only a deal about
@@ -1450,7 +1454,7 @@ async function addOption(id) {
     if ((poll.parts || []).length) args.p_part = target;
     poll = await rpc('add_poll_option', args); if (!poll.can_add) adding = false; render(); loadInfo();
     const at = (poll.parts || [])[target]?.time; toast(at ? `Added to ${t12(at)} · friends can vote on it` : 'Added · friends can vote on it'); }
-  catch (e) { alert(/part is full/.test(e.message) ? 'That part already has 6 places.' : /full/.test(e.message) ? 'This vote is full.' : "Couldn't add that. Try again."); } });
+  catch (e) { alert(/part is full/.test(e.message) ? 'That stop already has 6 places.' : /full/.test(e.message) ? 'This vote is full.' : "Couldn't add that. Try again."); } });
 }
 function setHow(how) {
   return once(async () => { try { poll = await rpc('set_how', { p_code: code, p_voter_key: me, p_how: how }); render(); }
@@ -1471,8 +1475,8 @@ function askNameFirst() {
       <div class="t" id="askname-t">👋 First, what’s your name?</div>
       <div class="m">So friends see who voted. You only need to do this once.</div>
       <input id="askname-in" maxlength="30" autocomplete="given-name" placeholder="Your first name">
-      <button class="downbtn" id="askname-ok">Save and vote</button>
-      <button class="linkbtn" id="askname-skip" style="display:block;margin:10px auto 0">Vote without a name</button></div>`;
+      <button class="downbtn" id="askname-ok">Save</button>
+      <button class="linkbtn" id="askname-skip" style="display:block;margin:10px auto 0">Skip</button></div>`;
     document.body.appendChild(box);
     const input = box.querySelector('#askname-in');
     setTimeout(() => input.focus(), 50);
@@ -1539,7 +1543,7 @@ async function setRsvp(st) {
 }
 function rsvpHtml(final, fullyClosed) {
   const r = poll.rsvp || { in: [], maybe: [], out: [] };
-  const counts = [`${r.in.length} in`, r.maybe.length ? `${r.maybe.length} maybe` : '', r.out.length ? `${r.out.length} can’t` : ''].filter(Boolean).join(' · ');
+  const counts = r.in.length + r.maybe.length + r.out.length ? [`${r.in.length} in`, r.maybe.length ? `${r.maybe.length} maybe` : '', r.out.length ? `${r.out.length} can’t` : ''].filter(Boolean).join(' · ') : 'No one’s answered yet';
   return `<div class="down" id="step-in"><h2>${final ? 'It’s set. Are you in?' : 'Are you in?'}</h2>
     <div class="m">${esc(counts)}</div>
     ${r.in.length ? `<div class="who">🙌 ${esc(r.in.join(', '))}</div>` : ''}${r.maybe.length ? `<div class="who">🤔 ${esc(r.maybe.join(', '))}</div>` : ''}${r.out.length ? `<div class="who">😕 ${esc(r.out.join(', '))}</div>` : ''}
