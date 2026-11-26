@@ -46,6 +46,12 @@
   .thread-btns { display:flex; gap:10px; align-items:center; margin-top:6px; }
   .thread-btns .downbtn { flex:1; margin:0; }
   .thread-btns .linkbtn { padding:0; }
+  .edittoggle { display:block; width:100%; text-align:left; background:#fff; border:1.5px solid var(--accent); border-radius:14px; padding:10px 14px; margin:0 0 12px; font:inherit; cursor:pointer; }
+  .edittoggle b { display:block; color:#c2410c; font-size:15px; }
+  .edittoggle span { display:block; color:var(--muted); font-size:13px; margin-top:2px; }
+  .edittoggle.on { background:var(--accent); }
+  .edittoggle.on b { color:#fff; } .edittoggle.on span { color:#fde7d9; }
+  .rmstop { background:none; border:0; font:inherit; font-size:16px; color:#9a3412; cursor:pointer; padding:0 4px; }
   .movebtn { display:block; margin:2px 0 6px; font-size:14px; }
   .movebox { text-align:left; background:#fff; border:1.5px dashed var(--accent); border-radius:14px; padding:10px 12px; margin:4px 0 8px; }
   .thread-open { display:block; margin:8px 0 4px; }
@@ -211,6 +217,7 @@ const cap = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
 const openDetails = new Set();
 // The organizer moves a place to another stop, or to a new time ("↔ Move").
 let moveOpen = null;
+let editing = false; // the organizer's "Edit stops": Move and remove show only then
 function moveHtml(o, i, pi, p) {
   if (moveOpen !== i) return `<button class="linkbtn movebtn" data-move="${i}">↔ Move to another time</button>`;
   const pd = partDay(p);
@@ -222,6 +229,29 @@ function moveHtml(o, i, pi, p) {
     ${others ? `<div class="chips">${others}</div>` : ''}
     ${fresh ? `<div class="who" style="margin:8px 0 0">…or a new time${multiDay() ? ` on ${esc(day(pd))}` : ''}:</div><div class="chips">${fresh}</div>` : ''}
     <button class="linkbtn" data-move="${i}">Cancel</button></div>`;
+}
+// What changed between two versions of the stops, in a sentence (for "the plan just changed").
+function stopChange(before = [], after = []) {
+  const key = q => `${q.date || ''} ${q.time || ''} ${q.name}`;
+  const md = new Set([...(before || []), ...(after || [])].map(q => q.date).filter(Boolean)).size > 1;
+  const when = q => `${md && q.date ? wday(q.date) + ' ' : ''}${q.time ? t12(q.time) : q.name}`;
+  const was = new Set((before || []).map(key)), now = new Set((after || []).map(key));
+  const added = (after || []).filter(q => !was.has(key(q))), gone = (before || []).filter(q => !now.has(key(q)));
+  if (added.length === 1 && !gone.length) return `Someone added a ${when(added[0])} stop.`;
+  if (gone.length === 1 && !added.length) return `The ${when(gone[0])} stop was removed.`;
+  if (added.length === 1 && gone.length === 1) return `The ${when(gone[0])} stop moved to ${when(added[0])}.`;
+  return 'Someone added, moved or removed stops.';
+}
+async function removeStop(pi) {
+  const p = poll.parts[pi];
+  if (!p || saving) return;
+  if (!confirm(`Remove the ${p.time ? t12(p.time) : p.name} stop? Its places, votes and time ticks come out of the plan. Its comments move to the notes for the whole plan.`)) return;
+  if (!(await stopsUnchanged())) return;
+  saving = true;
+  try { poll = await rpc('remove_poll_stop', { p_code: code, p_creator_key: me, p_part: pi }); threadOpen.clear(); moveOpen = null; lastWrite = Date.now(); }
+  catch (e) { alert(/at least one/.test(e.message) ? 'A plan needs at least one stop.' : /plan is set/.test(e.message) ? 'The plan is set, so it can’t change now.' : "Couldn't remove it. Try again."); }
+  saving = false;
+  render();
 }
 async function moveOption(i, to, time) {
   if (saving) return;
@@ -338,13 +368,14 @@ function render() {
     ${final ? finalHtml(final) : !invite && !(parted && sections.every(x => x.idxs.length === 1)) ? summaryHtml(sections, partWin, win, lead, mine, people) : ''}
     ${!parted && !invite ? '<div id="step-vote"></div>' : ''}
     ${parted && Array.isArray(poll.times) && !final && !poll.closed && !multiDay() ? dayVoteHtml() : ''}
+    ${parted && poll.is_creator && !final && !poll.closed ? `<button class="edittoggle ${editing ? 'on' : ''}" id="edittoggle" aria-expanded="${editing}"><b>${editing ? '✓ Done editing' : '✏️ Edit stops'}</b><span>${editing ? 'Tap ↔ under a place to move it, or ✕ to remove a stop' : 'Move places to other times, or remove a stop'}</span></button>` : ''}
     ${sections.map(({ p, pi, idxs }) => {
       // A plan ("Dinner → Drinks"): each part has its own places and winner.
       const w = p ? partWin[pi] : win, secTop = Math.max(0, ...idxs.map(i => poll.counts[i] || 0));
       const fixed = !!p && idxs.length === 1;
       const hop = p && pi > 0 && partDay(poll.parts[pi - 1]) === partDay(p) ? hopText(poll.options.filter(o => o.part === pi - 1), poll.options.filter(o => o.part === pi)) : null;
       const dhead = (hop ? `<div class="hopbetween">${esc(hop)}</div>` : '') + (p && multiDay() && (pi === 0 || partDay(poll.parts[pi - 1]) !== partDay(p)) ? `<h3 class="dayhead">📅 ${esc(longDay(partDay(p)))}${partDay(p) >= isoDay(utahNow()) ? weatherHtml(partDay(p)) : ''}</h3>` : '');
-      const head = dhead + (p ? `<div class="part-head" id="step-part-${pi}"><span class="pnum">${pi + 1}</span><span class="pname">${p.time ? esc(t12(p.time)) : esc(p.name)}</span><span class="pstate">${final ? '✅ Set' : fixed ? (poll.options[idxs[0]].added_by ? `💡 From ${esc(poll.options[idxs[0]].added_by)}` : '📌 Set') : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span></div>${'part_times' in poll && !final && !poll.closed ? partTimesHtml(pi, p) : ''}` : '');
+      const head = dhead + (p ? `<div class="part-head" id="step-part-${pi}"><span class="pnum">${pi + 1}</span><span class="pname">${p.time ? esc(t12(p.time)) : esc(p.name)}</span>${editing && p && poll.is_creator && !final && !poll.closed && poll.parts.length > 1 ? `<button class="rmstop" data-rmstop="${pi}" aria-label="Remove this stop">✕</button>` : ''}<span class="pstate">${final ? '✅ Set' : fixed ? (poll.options[idxs[0]].added_by ? `💡 From ${esc(poll.options[idxs[0]].added_by)}` : '📌 Set') : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span></div>${'part_times' in poll && !final && !poll.closed ? partTimesHtml(pi, p) : ''}` : '');
       const opts = idxs.map(i => {
         const o = poll.options[i];
         const n = poll.counts[i] || 0, pct = people && !fixed ? Math.min(100, Math.round(n / people * 100)) : 0;
@@ -364,7 +395,7 @@ function render() {
           ${o.added_by ? `<div class="who">Suggested by ${esc(o.added_by)}${fixed && !final ? '. It’s in the plan unless the organizer removes it. Want something else? Suggest another option.' : ''}</div>` : ''}
           ${names ? `<div class="who">${names}</div>` : ''}
         </span>${invite || fixed ? '' : `<span class="n">${n}${mine.includes(i) ? ' ✓' : ''}</span>`}</span>
-      </button>${more(o, i)}${p && poll.is_creator && !final && !poll.closed ? moveHtml(o, i, pi, p) : ''}`;
+      </button>${more(o, i)}${editing && p && poll.is_creator && !final && !poll.closed ? moveHtml(o, i, pi, p) : ''}`;
       }).join('');
       const open = adding && addPart === pi;
       const sug = poll.can_add && !final && (!p || idxs.length < 6)
@@ -398,6 +429,8 @@ function render() {
   document.getElementById('textstop')?.addEventListener('click', () => setTexts(null));
   document.getElementById('textme')?.addEventListener('click', () => { const v = document.getElementById('phone')?.value || ''; if (v.replace(/\D/g, '').length >= 10) setTexts(v); else document.getElementById('phone')?.focus(); });
   document.getElementById('phone')?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('textme')?.click(); });
+  document.getElementById('edittoggle')?.addEventListener('click', () => { editing = !editing; moveOpen = null; render(); });
+  app.querySelectorAll('[data-rmstop]').forEach(b => b.addEventListener('click', () => removeStop(Number(b.dataset.rmstop))));
   app.querySelectorAll('[data-move]').forEach(b => b.addEventListener('click', () => { const i = Number(b.dataset.move); moveOpen = moveOpen === i ? null : i; render(); }));
   app.querySelectorAll('[data-moveto]').forEach(b => b.addEventListener('click', () => { const [i, j] = b.dataset.moveto.split('|').map(Number); moveOption(i, j, null); }));
   app.querySelectorAll('[data-movenew]').forEach(b => b.addEventListener('click', () => { const [i, t] = b.dataset.movenew.split('|'); moveOption(Number(i), null, t); }));
@@ -1174,8 +1207,9 @@ async function stopsUnchanged() {
   // Each stop's name, day and time: a stop moved to another time renumbers the rest too.
   const names = x => (x?.parts || []).map(q => `${q.name}@${q.date || ''} ${q.time || ''}`).join('|');
   if (!fresh || names(fresh) === names(poll)) return true;
+  const what = stopChange(poll && poll.parts, fresh.parts);
   poll = fresh; adding = false; ptOpen.clear(); threadOpen.clear(); moveOpen = null; lastWrite = Date.now(); render();
-  alert('The plan just changed: someone added, moved or removed a stop while you were here. Have a look and try again.');
+  alert(`The plan just changed. ${what} Have a look, then try again.`);
   return false;
 }
 async function togglePartTime(pi, t) {
