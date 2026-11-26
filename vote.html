@@ -773,11 +773,27 @@ const MILES = [[0, 'Any distance'], [1, 'Under 1 mi'], [3, 'Under 3 mi'], [5, 'U
 const SLOTS = [['', 'Any time'], ['morning', 'Morning'], ['lunch', 'Lunch'], ['afternoon', 'Afternoon'], ['evening', 'Evening'], ['late', 'Late night']];
 const SLOT_RANGE = { morning: [300, 660], lunch: [660, 840], afternoon: [840, 1020], evening: [1020, 1260], late: [1260, 1560] };
 const FEED_STEP = 12;
-const feed = { q: '', cat: '', mi: 0, slot: '', free: false, shown: FEED_STEP };
+const feed = { q: '', cat: '', mi: 0, slot: '', free: false, under: 0, shown: FEED_STEP };
 const tagsOf = d => (d.category_tags || []).map(t => String(t).toLowerCase());
 // Free and outdoors, the same rules as the app (deal-finder-v2 lib/config.js isFree / isOutdoors).
 const FREE_PRICE = /^\s*(free( (admission|entry|event|show|concert|pool|to (play|attend|watch|enter)|and open to (the|all)( public)?))?|no cover( charge)?)\s*[.!]?\s*$/i;
 const isFree = d => tagsOf(d).includes('free') || FREE_PRICE.test(d.price_info || '');
+// The lowest price a listing names ("$4 drafts", "$14.95 lunch"), from the price
+// line, else the title; amounts off aren't prices. Free is 0, null when none.
+function priceFrom(d) {
+  if (isFree(d)) return 0;
+  for (const text of [d.price_info, d.title]) {
+    const str = String(text || ''), amounts = [];
+    for (const m of str.matchAll(/\$\s?(\d{1,4}(?:\.\d{1,2})?)(?![\d.])/g)) {
+      const before = str.slice(Math.max(0, m.index - 6), m.index), after = str.slice(m.index + m[0].length, m.index + m[0].length + 10);
+      if (/save\s*$|up to\s*$/i.test(before) || /^\s*(off|discount|credit|value|savings)/i.test(after)) continue;
+      amounts.push(parseFloat(m[1]));
+    }
+    if (amounts.length) return Math.min(...amounts);
+  }
+  return null;
+}
+const isUnder = (d, dollars) => { const p = priceFrom(d); return p != null && p <= dollars; };
 const OUTDOOR_TEXT = /\b(outdoors?|open[- ]air|park(?!\s*city)(?!\s*(ave|st|street|blvd|row|place|lane))|hik(e|es|ing)|trails?|trailhead|(botanical|red butte|thanksgiving point|ashton) gardens?|gardens\b|(farmers'?|holiday|christmas|night|craft|winter|makers'?) markets?|festival|holiday lights|lights (display|walk|tour)|ice skating|skating rink|sledding|stroll|nature (center|walk|preserve)|canyon|zoo|aviary|amphitheat(er|re)|picnic|bird ?watching|snowshoe)\b/i;
 const NOT_OUTDOOR = /film festival|festival ballet|festival of trees|trail ?blazers|(trampoline|fun|action|station|jump|bounce|indoor|water) park|ninja|cinemark|megaplex/i;
 const isOutdoors = d => { const x = `${d.title || ''} ${d.business_name || ''} ${d.category || ''}`; return OUTDOOR_TEXT.test(x) && !NOT_OUTDOOR.test(x); };
@@ -837,7 +853,7 @@ function feedCard(d) {
 }
 function feedBody() {
   const q = feed.q.trim().toLowerCase();
-  const scoped = feedPool().filter(d => (!q || findText(d).includes(q)) && (!feed.mi || (d.distance_m != null && d.distance_m <= feed.mi * 1609.34)) && slotOk(d, feed.slot) && (!feed.free || isFree(d)));
+  const scoped = feedPool().filter(d => (!q || findText(d).includes(q)) && (!feed.mi || (d.distance_m != null && d.distance_m <= feed.mi * 1609.34)) && slotOk(d, feed.slot) && (!feed.free || isFree(d)) && (!feed.under || isUnder(d, feed.under)));
   const chips = (rows, on, attr, count) => `<div class="chips">${rows.map(([k, label, icon]) => {
     const n = count ? count(k) : null;
     if (count && k && !n && k !== on) return ''; // nothing of that kind here
@@ -848,10 +864,10 @@ function feedBody() {
   const list = scoped.filter(d => catOk(d, feed.cat) && !seen.has(d.business_name) && seen.add(d.business_name))
     .sort((a, b) => (a.distance_m ?? 1e9) - (b.distance_m ?? 1e9));
   const shown = list.slice(0, feed.shown);
-  const empty = feed.q.trim() ? `Nothing nearby matches “${esc(feed.q.trim())}”.` : 'Nothing matches those filters. Try All, a wider distance or another time.';
+  const empty = feed.q.trim() ? `Nothing nearby matches “${esc(feed.q.trim())}”.` : `Nothing matches those filters. Try All, a wider distance${feed.free || feed.under ? ', any price' : ''} or another time.`;
   return chips(PICK_CATS, feed.cat, 'data-cat', k => (k ? new Set(scoped.filter(d => catOk(d, k)).map(d => d.business_name)).size : new Set(scoped.map(d => d.business_name)).size))
     + chips(MILES, feed.mi, 'data-mi') + chips(SLOTS, feed.slot, 'data-slot')
-    + `<div class="chips"><button class="chip ${feed.free ? 'on' : ''}" id="feedfree" aria-pressed="${feed.free}">${feed.free ? '✓ ' : ''}🆓 Free only</button></div>`
+    + `<div class="chips"><button class="chip ${feed.free ? 'on' : ''}" id="feedfree" aria-pressed="${feed.free}">${feed.free ? '✓ ' : ''}🆓 Free only</button>${[10, 20].map(n => `<button class="chip ${feed.under === n ? 'on' : ''}" data-under="${n}" aria-pressed="${feed.under === n}">${feed.under === n ? '✓ ' : ''}${n === 10 ? '💵 ' : ''}Under $${n}</button>`).join('')}</div>`
     + (shown.length ? shown.map(feedCard).join('') : `<p class="sub">${empty}</p>`)
     + (list.length > shown.length ? `<button class="suggest" id="feedmore">Show ${Math.min(FEED_STEP, list.length - shown.length)} more</button>` : '');
 }
@@ -871,6 +887,7 @@ function bindFeed() {
   body.querySelectorAll('[data-slot]').forEach(b => b.addEventListener('click', () => { feed.slot = b.dataset.slot; feed.shown = FEED_STEP; redrawFeed(); }));
   document.getElementById('feedmore')?.addEventListener('click', () => { feed.shown += FEED_STEP; redrawFeed(); });
   document.getElementById('feedfree')?.addEventListener('click', () => { feed.free = !feed.free; feed.shown = FEED_STEP; redrawFeed(); });
+  body.querySelectorAll('[data-under]').forEach(b => b.addEventListener('click', () => { const n = Number(b.dataset.under); feed.under = feed.under === n ? 0 : n; feed.shown = FEED_STEP; redrawFeed(); }));
 }
 function redrawFeed() {
   const body = document.getElementById('feedbody');
