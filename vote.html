@@ -1272,9 +1272,11 @@ async function bringOver(from, to) {
   if (!(await askNameFirst())) return;
   return once(async () => {
     let copied = 0, missed = 0;
-    for (const { p, pi } of picked) {
+    for (const { p } of picked) {
       if ((poll.parts || []).length >= 6) { missed++; continue; }
-      const opts = poll.options.filter(o => o.part === pi);
+      // Found again by its day, time and name: a stop added earlier in the day shifts the numbers.
+      const now = (poll.parts || []).findIndex(q => partDay(q) === from && String(q.time || '') === String(p.time || '') && q.name === p.name);
+      const opts = now >= 0 ? poll.options.filter(o => o.part === now) : [];
       let at = null;
       for (const o of opts) {
         const own = o.own ? { p_title: o.title, p_place: o.business || null, p_lat: o.lat ?? null, p_lng: o.lng ?? null } : { p_deal_id: o.deal_id };
