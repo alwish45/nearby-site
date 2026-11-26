@@ -462,9 +462,11 @@ function render() {
   app.querySelectorAll('[data-how]').forEach(b => b.addEventListener('click', () => setHow(b.dataset.how)));
   bindPartTimes();
   app.querySelectorAll('[data-step]').forEach(b => b.addEventListener('click', () => document.getElementById(`step-${b.dataset.step}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })));
-  document.getElementById('stopopen')?.addEventListener('click', () => { stopOpen = true; render(); });
+  const openAdd = () => { stopOpen = true; adding = true; addPart = 'any'; feed.q = ''; feed.cat = ''; loadNearby(); render(); };
+  document.getElementById('stopopen')?.addEventListener('click', openAdd);
+  document.getElementById('stopclose')?.addEventListener('click', () => { stopOpen = false; adding = false; addPart = null; render(); });
   document.body.classList.toggle('has-fab', !!document.getElementById('fab'));
-  document.getElementById('fab')?.addEventListener('click', () => { stopOpen = true; render(); document.getElementById('step-addstop')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  document.getElementById('fab')?.addEventListener('click', () => { openAdd(); document.getElementById('step-addstop')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   app.querySelectorAll('[data-dayadd]').forEach(b => b.addEventListener('click', async () => { const pl = dayPlanSlot(); dayOpen = false; await suggestTime(b.dataset.dayadd, pl.time, pl); }));
   document.getElementById('daymore')?.addEventListener('click', () => { dayOpen = !dayOpen; render(); });
   bindOwn();
@@ -865,7 +867,7 @@ function anchorFor(pi) {
     if (before) return before;
   }
   if (pi === 'before') return located(0) || (poll.options || []).find(o => o.lat);
-  if (pi === 'after') return located((poll.parts || []).length - 1) || (poll.options || []).find(o => o.lat);
+  if (pi === 'after' || pi === 'any') return located((poll.parts || []).length - 1) || (poll.options || []).find(o => o.lat);
   return (poll.options || []).find(o => o.lat) || null;
 }
 // The vote's day when it's later than today ("Thursday?"), else null.
@@ -1294,6 +1296,16 @@ function bindOwn() {
 async function addOwn(own) {
   if (saving) return;
   if (!(await askNameFirst())) return;
+  if (addPart === 'any') {
+    const pick = await askWhen({ title: own.title, business_name: own.title });
+    if (!pick) return;
+    if (pick.time) return addStop(null, 'after', own, pick.time, pick.date);
+    if ((poll.parts || []).length && !(await stopsUnchanged())) return;
+    return once(async () => { try {
+      poll = await rpc('add_poll_option', { p_code: code, p_voter_key: me, p_name: myName(), ...(pick.vote ? {} : { p_part: pick.part }), p_title: own.title, p_place: own.place, p_lat: own.lat, p_lng: own.lng });
+      clearOwn(); adding = false; stopOpen = false; render(); toast('Added · friends can vote on it'); }
+    catch (e) { alert(/part is full/.test(e.message) ? 'That stop already has 6 places.' : /full/.test(e.message) ? 'This vote is full.' : /plan is set/.test(e.message) ? 'The plan is set, so it can’t change now.' : "Couldn't add that. Try again."); } });
+  }
   if (isStop(addPart)) return addStop(null, addPart, own);
   if (!(await stopsUnchanged())) return;
   return once(async () => {
@@ -1307,7 +1319,7 @@ async function addOwn(own) {
 // Something before or after: a new stop ahead of the plan or after it. A vote
 // without parts becomes a plan, its places the main part. The database picks
 // the new stop's time (an hour and a half before, two hours after).
-const isStop = v => v === 'before' || v === 'after';
+const isStop = v => v === 'before' || v === 'after' || v === 'any';
 let stopOpen = false; // the add-a-stop box, folded into one button until tapped
 
 // "Your turn": what's left for this person, in plain words, ticked off as they
@@ -1364,26 +1376,15 @@ function stopKind(d, time = null) {
 }
 // The floating "＋ Suggest or add an event": anyone on the link can suggest a
 // place or their own event before or after the plan, from anywhere on the page.
-const fabOn = () => !!poll && poll.can_add && !poll.final && !poll.closed && (poll.parts || []).length < 6 && !(adding && isStop(addPart));
+const fabOn = () => !!poll && poll.can_add && !poll.final && !poll.closed && (poll.parts || []).length < 6 && !(adding && addPart === 'any');
 function stopHtml() {
   const parts = poll.parts || [];
   if (!poll.can_add || poll.final || poll.closed || parts.length >= 6) return '';
-  if (!stopOpen && !(adding && isStop(addPart))) return `<button class="suggest" id="stopopen">＋ Add something to the plan (before or after)</button>`;
-  // Two plain steps: 1. when (before the first stop, or after the last), 2. what
-  // (a place from the list, or your own). Tapping the picked "when" again cancels.
-  const first = parts[0], last = parts[parts.length - 1];
-  const at = p => (p && p.time ? t12(p.time) : null);
-  const pick = isStop(addPart) && adding ? addPart : null;
-  const when = (w, icon, title, sub) => `<button class="opt ${pick === w ? 'mine' : ''}" data-suggest="${w}" aria-pressed="${pick === w}" style="margin-bottom:8px">
-      <span class="row"><span class="grow"><div class="t">${pick === w ? '✓ ' : icon + ' '}${esc(title)}</div><div class="m">${esc(sub)}</div></span></span></button>`;
+  if (!(stopOpen && adding && addPart === 'any')) return `<button class="suggest" id="stopopen">＋ Add something to the plan</button>`;
   return `<div class="box" id="step-addstop"><h2>＋ Add something to the plan</h2>
-    <div class="m" style="margin-bottom:10px">Friends see it in the plan and can vote on it.</div>
-    <div class="who" style="margin:0 0 6px;font-weight:800">1. When?</div>
-    ${when('before', '⬆️', at(first) ? `Before ${at(first)}` : 'Before', 'Something to do first')}
-    ${when('after', '⬇️', at(last) ? `After ${at(last)}` : 'After', 'Something to do after')}
-    ${pick ? `<div class="who" style="margin:12px 0 6px;font-weight:800">2. What? Pick a place below, or add your own</div>
-      ${'part_times' in poll ? ownHtml(true) : ''}${picksHtml()}
-      <button class="linkbtn" data-suggest="${pick}" style="margin-top:8px">Cancel</button>` : ''}</div>`;
+    <div class="m" style="margin-bottom:10px">Pick a place below or add your own, then choose when: at the same time as a stop (friends vote between them) or a time of its own.</div>
+    ${'part_times' in poll ? ownHtml(true) : ''}${picksHtml()}
+    <button class="linkbtn" id="stopclose" style="margin-top:8px">Close</button></div>`;
 }
 function addStop(id, where, own = null, at = null, onDate = null) {
   return once(async () => { try {
@@ -1432,6 +1433,7 @@ function askWhen(d) {
   const pad = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
   let part = typeof addPart === 'number' && parts[addPart] ? addPart : !parts.length && !isStop(addPart) ? 'vote' : null;
   let time = st;
+  if (!time && addPart === 'any') time = String((parts.length ? parts[parts.length - 1].time : (leadSlot() || {}).time) || '19:00').slice(0, 5);
   if (!time) {
     const base = parts.length ? (addPart === 'before' ? parts[0] : parts[parts.length - 1]).time : (leadSlot() || {}).time;
     time = base ? pad(addPart === 'before' ? Math.max(300, mins(base) - 90) : Math.min(mins(base) + 120, 1410)) : '19:00';
