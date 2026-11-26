@@ -225,7 +225,7 @@ function moveHtml(o, i, pi, p) {
   const pd = partDay(p);
   const others = poll.parts.map((q, j) => j === pi ? '' : `<button class="chip" data-moveto="${i}|${j}">${multiDay() ? esc(wday(partDay(q))) + ' ' : ''}${q.time ? esc(t12(q.time)) : esc(q.name)}</button>`).join('');
   const taken = new Set(poll.parts.filter(q => partDay(q) === pd).map(q => q.time));
-  const near = p.time ? ALL_TIMES.filter(t => !taken.has(t) && Math.abs(mins(t) - mins(p.time)) <= 240) : ALL_TIMES;
+  const near = (p.time ? ALL_TIMES.filter(t => !taken.has(t) && Math.abs(mins(t) - mins(p.time)) <= 240) : ALL_TIMES).filter(t => !gonePast(pd, t));
   const only = poll.options.filter(x => x.part === pi).length === 1; // re-times the stop itself
   const fresh = poll.parts.length < 6 || only ? near.map(t => `<button class="chip" data-movenew="${i}|${t}">${esc(t12(t))}</button>`).join('') : '';
   return `<div class="movebox"><div class="who" style="margin:0">Move ${esc(o.business || o.title)} to${others ? ' another stop' : ''}…</div>
@@ -651,6 +651,8 @@ const fitLine = r => [r.on.length ? `✅ ${r.on.map(placeOf).join(', ')}` : '', 
 const TIME_CHOICES = Array.from({ length: 29 }, (_, i) => toT(480 + i * 30));
 // For a plan's parts (brunch at 7am, late night at 11pm), as in the app.
 const ALL_TIMES = Array.from({ length: 36 }, (_, i) => toT(360 + i * 30));
+// Today, a time that's already gone by isn't offered (a 9am chip at 12:30).
+const gonePast = (ds, t) => ds === isoDay(utahNow()) && mins(t) <= utahNow().getHours() * 60 + utahNow().getMinutes();
 function goodTimes(ds) {
   const os = (poll.options || []).map(timed);
   const scored = TIME_CHOICES.map((t, i) => { const names = os.filter(o => onAt(o, ds, t) === true).map(placeOf); return { t, i, on: names.length, names }; })
@@ -719,7 +721,7 @@ function timesAround(ds, center, place) {
   list.add(cur);
   const near = place && onAt(place, ds, cur) === false ? nearestOn(place, ds, cur) : null;
   if (near) list.add(near);
-  return [...list].sort((a, b) => mins(a) - mins(b)).map(t => ({ t, of: os.length, on: os.filter(o => onAt(o, ds, t) === true).length, placeOn: place ? onAt(place, ds, t) : null }));
+  return [...list].filter(t => !gonePast(ds, t)).sort((a, b) => mins(a) - mins(b)).map(t => ({ t, of: os.length, on: os.filter(o => onAt(o, ds, t) === true).length, placeOn: place ? onAt(place, ds, t) : null }));
 }
 function zoomHtml(win) {
   if (poll.closed) return '';
@@ -1197,7 +1199,7 @@ function partTimesHtml(pi, p) {
     const r = at(t), lead = t === best || (!best && t === planned && rows.length);
     return `<button class="chip ${lead ? 'fit' : ''} ${r && r.mine ? 'on' : ''}" data-ptime="${pi}|${t}" aria-pressed="${!!(r && r.mine)}">${r && r.mine ? '✓ ' : ''}${esc(t12(t))}${t === planned && !(r && r.mine) ? '?' : ''}${r ? ` <span class="c">${r.n}</span>` : ''}</button>`;
   }).join('');
-  const others = ptOpen.has(pi) ? ALL_TIMES.filter(t => !list.includes(t) && (!planned || Math.abs(mins(t) - mins(planned)) <= 180))
+  const others = ptOpen.has(pi) ? ALL_TIMES.filter(t => !list.includes(t) && !gonePast(partDay(p), t) && (!planned || Math.abs(mins(t) - mins(planned)) <= 180))
     .map(t => `<button class="chip" data-ptime="${pi}|${t}">${esc(t12(t))}</button>`).join('') : '';
   const who = rows.length ? `<div class="fit-line">${esc(list.filter(at).map(t => `${t12(t)}: ${at(t).names.join(', ')}`).join(' · '))}</div>` : '';
   return `<div class="ptimes"><div class="who" style="margin:0">🕒 ${rows.length ? 'Tap every time that works for you' : planned ? `Can you make ${esc(t12(planned))}? Tap it, or suggest another time` : 'When? Suggest a time'}</div>
