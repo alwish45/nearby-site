@@ -109,6 +109,11 @@
   .fit-line { color:#4a453d; font-size:13px; line-height:1.4; margin-top:4px; }
   .mismatch { background:#fff6ed; border:1px solid #f6dcc2; border-radius:10px; padding:10px; margin-top:10px; font-size:13px; color:#4a453d; line-height:1.4; }
   .mismatch b { color:#9a3412; font-size:14px; }
+  .ptimes { margin:-2px 0 10px; text-align:left; }
+  .ptimes .chips { padding:6px 0 4px; }
+  .chip.dash { border-style:dashed; }
+  .ownbox { background:#fffaf4; border:1px solid #f6dcc2; border-radius:12px; padding:10px; margin:0 0 10px; text-align:left; }
+  .ownbox input { margin:6px 0 0; }
   .deal { display:inline-block; margin-top:6px; font-size:13px; font-weight:800; color:#9a3412; background:var(--soft); border-radius:999px; padding:3px 10px; }
 </style>
 </head>
@@ -163,7 +168,7 @@ async function loadInfo() {
   try {
     const r = await fetch(`${API.replace('rpc/', '')}deals?id=in.(${ids.join(',')})&select=id,title,description,price_info,image_url,deal_type,recurring_days,valid_from,valid_until,start_time,end_time,businesses(category,address,city,hours,phone,website,menu_url,google_rating,google_rating_count,price_level,logo_url)`, { headers: { apikey: KEY } });
     for (const d of (r.ok ? await r.json() : [])) info[d.id] = d;
-    if (!addingTime && !['name', 'note', 'find', 'zday', 'phone'].includes(document.activeElement && document.activeElement.id)) render();
+    if (!addingTime && !['name', 'note', 'find', 'zday', 'phone', 'owntitle', 'ownplace'].includes(document.activeElement && document.activeElement.id)) render();
   } catch {}
 }
 const cap = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
@@ -201,7 +206,10 @@ function detailsHtml(o, i) {
     </div>
   </div>`;
 }
+// Directions to your own stop search by where it is ("Liberty Park, Salt Lake City").
+const ownMap = o => (o.business ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(o.business)}` : o.lat ? `https://www.google.com/maps/dir/?api=1&destination=${o.lat},${o.lng}` : '');
 function more(o, i) {
+  if (o.own) { const m = ownMap(o); return m ? `<div class="more"><a href="${m}" target="_blank" rel="noopener">Map ›</a></div>` : ''; }
   const d = (info && info[o.deal_id]) || {}, b = d.businesses || {};
   const street = /\d/.test(b.address || '') ? b.address.split(',')[0] : '';
   const where = [cap(b.category), street || o.city].filter(Boolean).join(' · ');
@@ -232,6 +240,7 @@ function render() {
   const savedName = typed && typed.value ? typed.value : (() => { try { return localStorage.getItem('nearby.name') || ''; } catch { return ''; } })();
   // Keep a note that's typed but not posted yet across the refresh.
   const typedNote = document.getElementById('note')?.value || '';
+  saveOwnDraft();
   // The name box stays until a name is saved, then "Voting as Sam · Change".
   if (nameAsk === null) nameAsk = !savedName;
   const askName = nameAsk && !poll.closed;
@@ -254,7 +263,7 @@ function render() {
     <h1>${esc(poll.title || (invite ? 'Who’s in?' : 'Where should we go?'))}</h1>
     <p class="sub">${invite
       ? (poll.closed ? 'This invite has closed.' : 'Tap “I’m down” if you’re in. No app needed.')
-      : `${poll.closed ? 'This vote has closed.' : (poll.parts || []).length ? 'Plan the night together: in each part, tap every place you’d be happy with.' : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
+      : `${poll.closed ? 'This vote has closed.' : (poll.parts || []).length ? 'Plan it together: in each part, tap every place you’d be happy with and the times that work for you.' : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
     ${pastDay ? `<p class="off" style="text-align:left">This was for ${esc(day(poll.plan_day))}.</p>` : ''}
     ${!poll.closed && !final && poll.closes_at ? `<p class="who" style="text-align:left;margin:-4px 0 8px">Voting closes ${esc(new Date(poll.closes_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Denver' }))}</p>` : ''}
     ${askName ? `<div class="namecard"><div class="t">👋 What’s your name?</div><div class="m">So your friends know who voted and who’s in.</div>
@@ -265,7 +274,7 @@ function render() {
       // A plan ("Dinner → Drinks"): each part has its own places and winner.
       const w = p ? partWin[pi] : win, secTop = Math.max(0, ...idxs.map(i => poll.counts[i] || 0));
       const fixed = !!p && idxs.length === 1;
-      const head = p ? `<div class="part-head"><span class="pnum">${pi + 1}</span><span class="pname">${esc(p.name)}${p.time ? ` · ${esc(t12(p.time))}` : ''}</span><span class="pstate">${final ? '✅ Set' : fixed ? '📌 Set' : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span></div>` : '';
+      const head = p ? `<div class="part-head"><span class="pnum">${pi + 1}</span><span class="pname">${esc(p.name)}${p.time ? ` · ${esc(t12(p.time))}` : ''}</span><span class="pstate">${final ? '✅ Set' : fixed ? '📌 Set' : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span></div>${'part_times' in poll && !final && !poll.closed ? partTimesHtml(pi, p) : ''}` : '';
       const opts = idxs.map(i => {
         const o = poll.options[i];
         const n = poll.counts[i] || 0, pct = people && !fixed ? Math.min(100, Math.round(n / people * 100)) : 0;
@@ -273,14 +282,14 @@ function render() {
         const when = [o.valid_from && o.valid_from > isoDay(utahNow()) ? day(o.valid_from) : '', o.start_time ? t12(o.start_time) : ''].filter(Boolean).join(' ');
         const img = /^https:\/\//.test(o.image_url || '') ? `<img class="thumb" src="${esc(o.image_url)}" alt="" loading="lazy" onerror="this.remove()">` : '';
         const deal = o.price_info && !/^\s*tickets\s*$/i.test(o.price_info) ? `<span class="deal">${esc(o.price_info)}</span>` : '';
-        const fit = p && p.time && !pastDay ? onAt(timed(o), pday, p.time) : null;
+        const fit = p && p.time && !pastDay && !o.own ? onAt(timed(o), pday, p.time) : null;
         const isFinal = finalIdx.includes(i);
         const fitLn = fit === false ? `<div class="off">❌ Not on at ${esc(t12(p.time))} (${esc(whyOff(timed(o), pday))})</div>` : fit === true && !fixed ? `<div class="on">✅ On at ${esc(t12(p.time))}</div>` : '';
         return `<button class="opt ${mine.includes(i) ? 'mine' : ''} ${isFinal ? 'final-pick' : final ? 'dim' : ''}" data-i="${i}" ${poll.closed || invite || fixed || final ? 'disabled' : ''} aria-pressed="${mine.includes(i)}">
         <span class="bar ${secTop && n === secTop ? 'win' : ''}" style="width:${pct}%"></span>
         <span class="row">${img}<span class="grow">
-          <div class="t">${isFinal ? '✅ ' : i === w && !fixed && !final ? '🏆 ' : ''}${esc(o.title)}</div>
-          <div class="m">${esc([o.business, o.category ? cap(o.category) : '', o.price_level || '', o.city, when].filter(Boolean).join(' · '))}</div>
+          <div class="t">${isFinal ? '✅ ' : i === w && !fixed && !final ? '🏆 ' : ''}${o.own ? '✏️ ' : ''}${esc(o.title)}</div>
+          <div class="m">${o.own ? (o.business ? '📍 ' + esc(o.business) : 'Your own stop') : esc([o.business, o.category ? cap(o.category) : '', o.price_level || '', o.city, when].filter(Boolean).join(' · '))}</div>
           ${deal}${fitLn}
           ${o.added_by ? `<div class="who">Suggested by ${esc(o.added_by)}</div>` : ''}
           ${names ? `<div class="who">${names}</div>` : ''}
@@ -289,7 +298,7 @@ function render() {
       }).join('');
       const open = adding && addPart === pi;
       const sug = poll.can_add && !final && (!p || idxs.length < 6)
-        ? `<button class="suggest" data-suggest="${pi ?? ''}">${open ? 'Done' : p ? `＋ Suggest a place for ${esc(p.name.toLowerCase())}` : '＋ Suggest another place'}</button>${open ? picksHtml() : ''}` : '';
+        ? `<button class="suggest" data-suggest="${pi ?? ''}">${open ? 'Done' : p ? `＋ Suggest something for ${esc(p.name.toLowerCase())}` : '＋ Suggest another place'}</button>${open ? (p && 'part_times' in poll ? ownHtml(/walk|park|hang|something to do|activity/i.test(p.name)) : '') + picksHtml() : ''}` : '';
       return head + opts + sug;
     }).join('')}
     ${stopHtml()}
@@ -330,6 +339,8 @@ function render() {
     render();
   }));
   app.querySelectorAll('[data-how]').forEach(b => b.addEventListener('click', () => setHow(b.dataset.how)));
+  bindPartTimes();
+  bindOwn();
   bindFeed();
   const find = document.getElementById('find');
   if (find) {
@@ -358,14 +369,16 @@ function nightHtml(winners, people, locked = false, pastDay = false) {
     const hopLine = hop == null ? '' : `<div class="hop" ${hop > 5 ? 'style="color:#b4441c"' : ''}>↓ ${hop < 0.1 ? 'next door' : hop.toFixed(1) + ' mi'} · ~${Math.max(1, Math.round(hop <= 0.8 ? hop * 20 : hop * 2.5 + 3))} min ${hop <= 0.8 ? 'walk' : 'drive'}${hop > 5 ? ' · far apart' : ''}</div>`;
     const near = off ? nearestOn(t, pday, p.time) : null;
     return `${hopLine}<div class="night-row"><span class="ntime">${p.time ? esc(t12(p.time)) : '—'}</span><span class="grow">
-      <div class="t">${esc(p.name)}: ${o ? esc(o.business || o.title) : 'tied or still voting'}</div>
+      <div class="t">${esc(p.name)}: ${o ? esc(placeName(o)) : 'tied or still voting'}</div>
+      ${o && o.own && o.business ? `<div class="who">📍 ${esc(o.business)}</div>` : ''}
       ${off ? `<div class="off">⚠️ Not on at ${esc(t12(p.time))} (${esc(whyOff(t, pday))})${near ? `. Closest: ${esc(t12(near))}` : ''}</div>` : ''}
-      ${o && o.lat ? `<a href="${gmaps(o)}" target="_blank" rel="noopener">Directions ›</a>` : ''}
+      ${o && o.own ? (ownMap(o) ? `<a href="${ownMap(o)}" target="_blank" rel="noopener">Directions ›</a>` : '') : o && o.lat ? `<a href="${gmaps(o)}" target="_blank" rel="noopener">Directions ›</a>` : ''}
     </span></div>`;
   }).join('');
   const located = stops.filter(o => o && o.lat);
   const route = located.length >= 2 ? `https://www.google.com/maps/dir/?api=1&origin=${located[0].lat},${located[0].lng}&destination=${located[located.length - 1].lat},${located[located.length - 1].lng}${located.length > 2 ? '&waypoints=' + encodeURIComponent(located.slice(1, -1).map(o => `${o.lat},${o.lng}`).join('|')) : ''}` : '';
-  return `<div class="box"><h2>🌃 Your night · ${pastDay ? 'was ' + esc(day(pday)) : pday === today ? 'Tonight' : esc(day(pday))}${locked ? ' · set' : ''}</h2>${rows}
+  const dayPlan = poll.parts.some(p => p.time && String(p.time).slice(0, 5) < '16:00');
+  return `<div class="box"><h2>${dayPlan ? '☀️ Your day' : '🌃 Your night'} · ${pastDay ? 'was ' + esc(day(pday)) : pday === today ? (dayPlan ? 'Today' : 'Tonight') : esc(day(pday))}${locked ? ' · set' : ''}</h2>${rows}
     ${route ? `<div style="text-align:left;margin-top:8px"><a href="${route}" target="_blank" rel="noopener" style="color:#c2410c;font-weight:700;text-decoration:none">🗺️ The whole route in Maps ›</a></div>` : ''}
     ${locked ? '' : `<div class="who" style="margin-top:6px">${winners.every(w => w >= 0) ? 'Every part has a leader. The person who started it locks in the final plan.' : 'Each part’s leader shows here as friends vote.'}</div>`}</div>`;
 }
@@ -904,6 +917,99 @@ function myName() {
   try { if (n) localStorage.setItem('nearby.name', n); else n = localStorage.getItem('nearby.name') || ''; } catch {}
   return n || null;
 }
+// Times for each stop of a plan: the stop's own time and any others friends
+// suggested, with who can make each. Tap to tick, "＋ Other time" to suggest
+// one (toggle_part_time, scripts/add_vote_day_plans.sql).
+const ptOpen = new Set(); // stops with the other-times row open
+function bestPartTime(pi) {
+  const rows = (poll.part_times || []).filter(x => x.part === pi);
+  if (!rows.length) return null;
+  const top = Math.max(...rows.map(x => x.n)), lead = rows.filter(x => x.n === top);
+  return lead.length === 1 && lead[0].time !== String(poll.parts[pi].time || '').slice(0, 5) ? lead[0].time : null;
+}
+function partTimesHtml(pi, p) {
+  const planned = p.time ? String(p.time).slice(0, 5) : null;
+  const rows = (poll.part_times || []).filter(x => x.part === pi);
+  const at = t => rows.find(x => x.time === t);
+  const list = [...new Set([...(planned ? [planned] : []), ...rows.map(x => x.time)])].sort();
+  const best = bestPartTime(pi);
+  const chips = list.map(t => {
+    const r = at(t), lead = t === best || (!best && t === planned && rows.length);
+    return `<button class="chip ${lead ? 'fit' : ''} ${r && r.mine ? 'on' : ''}" data-ptime="${pi}|${t}" aria-pressed="${!!(r && r.mine)}">${r && r.mine ? '✓ ' : ''}${esc(t12(t))}${t === planned ? ' · plan' : ''}${r ? ` <span class="c">${r.n}</span>` : ''}</button>`;
+  }).join('');
+  const others = ptOpen.has(pi) ? ALL_TIMES.filter(t => !list.includes(t) && (!planned || Math.abs(mins(t) - mins(planned)) <= 180))
+    .map(t => `<button class="chip" data-ptime="${pi}|${t}">${esc(t12(t))}</button>`).join('') : '';
+  const who = rows.length ? `<div class="fit-line">${esc(list.filter(at).map(t => `${t12(t)}: ${at(t).names.join(', ')}`).join(' · '))}</div>` : '';
+  return `<div class="ptimes"><div class="who" style="margin:0">🕒 ${rows.length ? 'Tap every time that works for you' : planned ? `Does ${esc(t12(planned))} work? Tap it, or suggest another time` : 'When? Suggest a time'}</div>
+    <div class="chips">${chips}<button class="chip dash" data-pmore="${pi}">${ptOpen.has(pi) ? 'Cancel' : '＋ Other time'}</button></div>
+    ${others ? `<div class="chips">${others}</div>` : ''}${who}
+    ${best ? `<div class="on">⭐ ${esc(t12(best))} works for the most so far</div>` : ''}</div>`;
+}
+function bindPartTimes() {
+  app.querySelectorAll('[data-ptime]').forEach(b => b.addEventListener('click', () => { const [pi, t] = b.dataset.ptime.split('|'); ptOpen.delete(Number(pi)); togglePartTime(Number(pi), t); }));
+  app.querySelectorAll('[data-pmore]').forEach(b => b.addEventListener('click', () => { const pi = Number(b.dataset.pmore); if (ptOpen.has(pi)) ptOpen.delete(pi); else ptOpen.add(pi); render(); }));
+}
+async function togglePartTime(pi, t) {
+  if (saving) return;
+  if (!(await askNameFirst())) return;
+  return once(async () => {
+    const n = myName(); if (n) nameAsk = false;
+    try { poll = await rpc('toggle_part_time', { p_code: code, p_voter_key: me, p_part: pi, p_time: t, p_name: n }); render(); }
+    catch (e) { alert(/6 times/.test(e.message) ? 'This stop already has 6 times. Tick one of those.' : /plan is set/.test(e.message) ? 'The plan is set, so the times can’t change now.' : /closed/.test(e.message) ? 'This vote has closed.' : "Couldn't save that. Try again."); }
+  });
+}
+
+// Your own stop, not a listed place: a walk in the park, a picnic, games at
+// someone's place. Parks around Salt Lake, a few ideas, or type it.
+const PARKS = [
+  ['Walk in Liberty Park', 'Liberty Park, Salt Lake City', 40.7457, -111.8750], ['Walk in Sugar House Park', 'Sugar House Park, Salt Lake City', 40.7230, -111.8460],
+  ['Memory Grove and City Creek', 'Memory Grove Park, Salt Lake City', 40.7773, -111.8883], ['Red Butte Garden', 'Red Butte Garden, Salt Lake City', 40.7665, -111.8243],
+  ['Hike Ensign Peak', 'Ensign Peak Trailhead, Salt Lake City', 40.7915, -111.8885], ['Parleys Nature Park (dogs welcome)', 'Parleys Historic Nature Park, Salt Lake City', 40.7070, -111.8090],
+  ['International Peace Gardens', 'International Peace Gardens, Salt Lake City', 40.7330, -111.9245], ['Wheeler Historic Farm', 'Wheeler Historic Farm, Murray', 40.6340, -111.8670],
+];
+const OWN_IDEAS = [['🧺', 'Picnic'], ['🎲', 'Games at someone’s place'], ['🍿', 'Movie night in'], ['🛍️', 'Shopping'], ['🚲', 'Bike ride'], ['🏠', 'Hang out at home']];
+const OUTDOOR = /walk|park|hike|trail|garden|bike|canyon|nature|stroll/i;
+let ownDraft = { t: '', p: '' };
+// After adding: empty the boxes too, or the next redraw would read them back.
+function clearOwn() {
+  ownDraft = { t: '', p: '' };
+  ['owntitle', 'ownplace'].forEach(id => { const el = document.getElementById(id); if (el) el.value = ''; });
+}
+function saveOwnDraft() {
+  const t = document.getElementById('owntitle'), p = document.getElementById('ownplace');
+  if (t) ownDraft = { t: t.value, p: p ? p.value : '' };
+}
+function ownHtml(outdoors) {
+  const parks = outdoors ? `<div class="who" style="margin:0">🌳 Parks and walks</div><div class="chips" style="padding-top:6px">${PARKS.map((x, i) => `<button class="chip" data-park="${i}">＋ ${esc(x[0])}</button>`).join('')}</div>` : '';
+  return `<div class="ownbox">${parks}
+    <div class="who" style="margin:0">✏️ Or add your own</div>
+    <div class="chips" style="padding-top:6px">${OWN_IDEAS.map(([icon, t]) => `<button class="chip ${ownDraft.t === t ? 'on' : ''}" data-ownidea="${esc(t)}">${icon} ${esc(t)}</button>`).join('')}</div>
+    <input id="owntitle" maxlength="60" autocomplete="off" placeholder="What? e.g. Walk the dog, games at Sam’s" value="${esc(ownDraft.t)}">
+    <input id="ownplace" maxlength="60" autocomplete="off" placeholder="Where? (optional) e.g. Liberty Park" value="${esc(ownDraft.p)}">
+    <button class="downbtn" id="ownadd">Add it</button></div>`;
+}
+function bindOwn() {
+  app.querySelectorAll('[data-park]').forEach(b => b.addEventListener('click', () => { const x = PARKS[Number(b.dataset.park)]; addOwn({ title: x[0], place: x[1], lat: x[2], lng: x[3] }); }));
+  app.querySelectorAll('[data-ownidea]').forEach(b => b.addEventListener('click', () => { saveOwnDraft(); ownDraft.t = b.dataset.ownidea; render(); document.getElementById('ownplace')?.focus(); }));
+  document.getElementById('ownadd')?.addEventListener('click', () => {
+    saveOwnDraft();
+    const t = ownDraft.t.trim();
+    if (!t) { document.getElementById('owntitle')?.focus(); return; }
+    addOwn({ title: t, place: ownDraft.p.trim() || null, lat: null, lng: null });
+  });
+}
+async function addOwn(own) {
+  if (saving) return;
+  if (!(await askNameFirst())) return;
+  if (isStop(addPart)) return addStop(null, addPart, own);
+  return once(async () => {
+    try {
+      poll = await rpc('add_poll_option', { p_code: code, p_voter_key: me, p_name: myName(), p_part: addPart, p_title: own.title, p_place: own.place, p_lat: own.lat, p_lng: own.lng });
+      clearOwn(); if (!poll.can_add) adding = false; render();
+    } catch (e) { alert(/could not find the function/i.test(e.message) ? 'Adding your own stops isn’t switched on yet.' : /part is full/.test(e.message) ? 'That part already has 6 places.' : /full/.test(e.message) ? 'This vote is full.' : /plan is set/.test(e.message) ? 'The plan is set, so it can’t change now.' : "Couldn't add that. Try again."); }
+  });
+}
+
 // Something before or after: a new stop ahead of the plan or after it. A vote
 // without parts becomes a plan, its places the main part. The database picks
 // the new stop's time (an hour and a half before, two hours after).
@@ -915,16 +1021,16 @@ function stopKind(d) {
 }
 function stopHtml() {
   const parts = poll.parts || [];
-  if (!poll.can_add || poll.final || poll.closed || parts.length >= 4) return '';
+  if (!poll.can_add || poll.final || poll.closed || parts.length >= 6) return '';
   const btn = (w, label) => `<button class="chip ${adding && addPart === w ? 'on' : ''}" data-suggest="${w}" aria-pressed="${adding && addPart === w}">${adding && addPart === w ? 'Done' : label}</button>`;
-  return `<div class="box"><h2>${parts.length ? 'Add to the night' : 'Make a night of it'}</h2>
-    <div class="m">Suggest somewhere to go first or after${parts.length ? '' : '. The vote becomes a plan with a stop before or after'}.</div>
+  return `<div class="box"><h2>${parts.length ? 'Add to the plan' : 'Make a day or night of it'}</h2>
+    <div class="m">Suggest something to do first or after: a place, or your own like a walk in the park${parts.length ? '' : '. The vote becomes a plan with a stop before or after'}.</div>
     <div class="chips" style="margin-top:8px">${btn('before', '⬆️ Before')}${btn('after', '⬇️ After')}</div>
-    ${adding && isStop(addPart) ? picksHtml() : ''}</div>`;
+    ${adding && isStop(addPart) ? ('part_times' in poll ? ownHtml(true) : '') + picksHtml() : ''}</div>`;
 }
-function addStop(id, where) {
+function addStop(id, where, own = null) {
   return once(async () => { try {
-    const d = (nearby || []).find(x => x.deal_id === id) || {};
+    const d = own || (nearby || []).find(x => x.deal_id === id) || {};
     const kinds = poll.options.map(o => stopKind({ ...o, ...((info && info[o.deal_id]) || {}) }));
     const parts = poll.parts || [];
     const slot = parts.length ? null : leadSlot();
@@ -941,12 +1047,13 @@ function addStop(id, where) {
         if (near && (where === 'before' ? mins(near) < mins(base) : mins(near) > mins(base))) time = near;
       }
     }
-    poll = await rpc('add_poll_stop', { p_code: code, p_voter_key: me, p_deal_id: id, p_where: where, p_name: myName(),
-      p_stop_name: stopKind(d) || (where === 'before' ? 'Before' : 'After'), p_stop_time: time,
+    poll = await rpc('add_poll_stop', { p_code: code, p_voter_key: me, p_where: where, p_name: myName(),
+      ...(own ? { p_title: own.title, p_place: own.place, p_lat: own.lat, p_lng: own.lng } : { p_deal_id: id }),
+      p_stop_name: own ? (OUTDOOR.test(`${own.title} ${own.place || ''}`) ? 'A walk' : own.title.slice(0, 30)) : stopKind(d) || (where === 'before' ? 'Before' : 'After'), p_stop_time: time,
       p_main_name: kinds.length && kinds.every(k => k && k === kinds[0]) ? kinds[0] : null,
       p_main_time: slot && slot.time ? String(slot.time).slice(0, 5) : null });
-    adding = false; render(); loadInfo(); }
-  catch (e) { alert(/could not find the function/i.test(e.message) ? 'Adding a stop before or after isn’t switched on yet.' : /4 parts/.test(e.message) ? 'This plan already has 4 stops.' : /full/.test(e.message) ? 'This vote is full.' : /plan is set/.test(e.message) ? 'The plan is set, so it can’t change now.' : "Couldn't add that. Try again."); } });
+    adding = false; clearOwn(); render(); loadInfo(); }
+  catch (e) { alert(/could not find the function/i.test(e.message) ? 'Adding a stop before or after isn’t switched on yet.' : /\d parts/.test(e.message) ? `This plan already has ${(poll.parts || []).length} stops.` : /full/.test(e.message) ? 'This vote is full.' : /plan is set/.test(e.message) ? 'The plan is set, so it can’t change now.' : "Couldn't add that. Try again."); } });
 }
 function addOption(id) {
   if (isStop(addPart)) return addStop(id, addPart);
@@ -1047,7 +1154,7 @@ function rsvpHtml(final, fullyClosed) {
     ${r.in.length ? `<div class="who">🙌 ${esc(r.in.join(', '))}</div>` : ''}${r.maybe.length ? `<div class="who">🤔 ${esc(r.maybe.join(', '))}</div>` : ''}${r.out.length ? `<div class="who">😕 ${esc(r.out.join(', '))}</div>` : ''}
     <div class="rsvp">${[['in', '🙌 I’m in'], ['maybe', '🤔 Maybe'], ['out', '😕 Can’t']].map(([k, l]) => `<button data-rsvp="${k}" class="${poll.my_rsvp === k ? 'on' : ''}" aria-pressed="${poll.my_rsvp === k}" ${fullyClosed ? 'disabled' : ''}>${l}</button>`).join('')}</div></div>`;
 }
-const placeName = o => (o && (o.business || o.title)) || '';
+const placeName = o => (o && (o.own ? o.title : o.business || o.title)) || '';
 const gmaps = o => `https://www.google.com/maps/dir/?api=1&destination=${o.lat},${o.lng}`;
 // Who's leading (or tied) and what you picked, at the top.
 function summaryHtml(sections, partWin, win, lead, mine, people) {
@@ -1065,8 +1172,8 @@ function finalHtml(f) {
   const stops = picks.map((i, k) => {
     const o = poll.options[i] || {}, p = Array.isArray(f.parts) ? poll.parts[k] : null;
     return `<div class="stop"><div class="t">${p ? `${p.time ? esc(t12(p.time)) + ' · ' : ''}${esc(p.name)}: ` : ''}${esc(placeName(o))}</div>
-      ${o.title && o.business ? `<div class="m">${esc(o.title)}${o.price_info ? ' · ' + esc(o.price_info) : ''}</div>` : ''}
-      ${o.lat ? `<a href="${gmaps(o)}" target="_blank" rel="noopener">Directions ›</a>` : ''}</div>`;
+      ${o.title && o.business ? `<div class="m">${o.own ? '📍 ' + esc(o.business) : esc(o.title)}${o.price_info ? ' · ' + esc(o.price_info) : ''}</div>` : ''}
+      ${o.own ? (ownMap(o) ? `<a href="${ownMap(o)}" target="_blank" rel="noopener">Directions ›</a>` : '') : o.lat ? `<a href="${gmaps(o)}" target="_blank" rel="noopener">Directions ›</a>` : ''}</div>`;
   }).join('');
   return `<div class="final"><h2>✅ It’s set${when ? ' · ' + esc(when) : ''}</h2>${stops}
     <button class="downbtn" id="ics" style="margin-top:12px">📅 Add to calendar</button></div>`;
@@ -1083,7 +1190,7 @@ function downloadIcs() {
     const t = (p && p.time) || f.time || (o.start_time ? String(o.start_time).slice(0, 5) : null);
     const when = t ? [`DTSTART;TZID=America/Denver:${d0}T${t.replace(':', '')}00`, `DURATION:PT2H`] : [`DTSTART;VALUE=DATE:${d0}`];
     return ['BEGIN:VEVENT', `UID:${code}-${k}@near.by`, `DTSTAMP:${stamp}`, ...when,
-      `SUMMARY:${fold((p ? p.name + ': ' : '') + placeName(o))}`, `LOCATION:${fold([o.business, o.city].filter(Boolean).join(', '))}`,
+      `SUMMARY:${fold((p ? p.name + ': ' : '') + placeName(o))}`, `LOCATION:${fold(o.own ? o.business || '' : [o.business, o.city].filter(Boolean).join(', '))}`,
       `DESCRIPTION:${fold(`${o.title || ''}${o.price_info ? ' · ' + o.price_info : ''}\n${location.href}`)}`, 'END:VEVENT'].join('\r\n');
   });
   const ics = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//near.by//vote//EN', ...ev, 'END:VCALENDAR'].join('\r\n');
@@ -1111,7 +1218,7 @@ async function load() {
   if (saving || lastWrite >= startedAt) return;
   if (fresh !== undefined) poll = fresh;
   // Don't redraw under someone typing their name, a note or a search, or picking a time.
-  if (!addingTime && !['name', 'note', 'find', 'zday', 'phone'].includes(document.activeElement && document.activeElement.id)) render();
+  if (!addingTime && !['name', 'note', 'find', 'zday', 'phone', 'owntitle', 'ownplace'].includes(document.activeElement && document.activeElement.id)) render();
   loadInfo();
 }
 load();
