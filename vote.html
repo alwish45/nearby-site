@@ -64,7 +64,8 @@
   .askname .sheet { background:#faf8f4; width:100%; max-width:520px; border-radius:18px 18px 0 0; padding:18px 16px 22px; text-align:left; }
   .askname .t { font-size:19px; font-weight:800; }
   .hopbetween { font-size:13px; font-weight:700; color:#6b655b; text-align:center; margin:2px 0 6px; }
-  .dayhead { font-size:17px; font-weight:900; margin:14px 0 6px; text-align:left; }
+  .dayhead { font-size:22px; font-weight:900; margin:26px 0 10px; padding:10px 14px; text-align:left; background:var(--win); border-left:6px solid var(--accent); border-radius:12px; }
+  .dayhead .wx { font-size:14px; font-weight:600; margin:2px 0 0; color:var(--muted); }
   .calrow { display:flex; gap:8px; margin-top:12px; }
   .calbtn { flex:1; text-align:center; border:1.5px solid #e2ddd3; background:#fff; border-radius:12px; padding:11px 6px; font-weight:800; color:#14110d; text-decoration:none; font-size:15px; }
   .whenrow { display:flex; align-items:center; justify-content:center; gap:18px; margin:6px 0 4px; }
@@ -168,6 +169,7 @@ const me = voterKey();
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const t12 = t => { if (!t) return ''; const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}${m ? ':' + String(m).padStart(2, '0') : ''}${h < 12 ? 'am' : 'pm'}`; };
 const day = d => (d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) : '');
+const longDay = d => (d ? new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' }) : '');
 
 async function rpc(fn, body) {
   const r = await fetch(API + fn, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -306,8 +308,8 @@ function render() {
       const w = p ? partWin[pi] : win, secTop = Math.max(0, ...idxs.map(i => poll.counts[i] || 0));
       const fixed = !!p && idxs.length === 1;
       const hop = p && pi > 0 && partDay(poll.parts[pi - 1]) === partDay(p) ? hopText(poll.options.filter(o => o.part === pi - 1), poll.options.filter(o => o.part === pi)) : null;
-      const dhead = (hop ? `<div class="hopbetween">${esc(hop)}</div>` : '') + (p && multiDay() && (pi === 0 || partDay(poll.parts[pi - 1]) !== partDay(p)) ? `<h3 class="dayhead">📅 ${esc(day(partDay(p)))}</h3>${partDay(p) >= isoDay(utahNow()) ? weatherHtml(partDay(p)) : ''}` : '');
-      const head = dhead + (p ? `<div class="part-head" id="step-part-${pi}"><span class="pnum">${pi + 1}</span><span class="pname">${esc(p.name)}${p.time ? ` · ${esc(t12(p.time))}` : ''}</span><span class="pstate">${final ? '✅ Set' : fixed ? (poll.options[idxs[0]].added_by ? `💡 From ${esc(poll.options[idxs[0]].added_by)}` : '📌 Set') : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span></div>${'part_times' in poll && !final && !poll.closed ? partTimesHtml(pi, p) : ''}` : '');
+      const dhead = (hop ? `<div class="hopbetween">${esc(hop)}</div>` : '') + (p && multiDay() && (pi === 0 || partDay(poll.parts[pi - 1]) !== partDay(p)) ? `<h3 class="dayhead">📅 ${esc(longDay(partDay(p)))}${partDay(p) >= isoDay(utahNow()) ? weatherHtml(partDay(p)) : ''}</h3>` : '');
+      const head = dhead + (p ? `<div class="part-head" id="step-part-${pi}"><span class="pnum">${pi + 1}</span><span class="pname">${p.time ? esc(t12(p.time)) : esc(p.name)}</span><span class="pstate">${final ? '✅ Set' : fixed ? (poll.options[idxs[0]].added_by ? `💡 From ${esc(poll.options[idxs[0]].added_by)}` : '📌 Set') : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span></div>${'part_times' in poll && !final && !poll.closed ? partTimesHtml(pi, p) : ''}` : '');
       const opts = idxs.map(i => {
         const o = poll.options[i];
         const n = poll.counts[i] || 0, pct = people && !fixed ? Math.min(100, Math.round(n / people * 100)) : 0;
@@ -331,7 +333,7 @@ function render() {
       }).join('');
       const open = adding && addPart === pi;
       const sug = poll.can_add && !final && (!p || idxs.length < 6)
-        ? `<button class="suggest" data-suggest="${pi ?? ''}">${open ? 'Done' : p ? `＋ Suggest something for ${esc(p.name.toLowerCase())}` : '＋ Suggest another place'}</button>${open ? (p && 'part_times' in poll ? ownHtml(/walk|park|hang|something to do|activity/i.test(p.name)) : '') + picksHtml() : ''}` : '';
+        ? `<button class="suggest" data-suggest="${pi ?? ''}">${open ? 'Done' : p ? `＋ Suggest another place${p.time ? ` for ${esc(t12(p.time))}` : ''}` : '＋ Suggest another place'}</button>${open ? (p && 'part_times' in poll ? ownHtml(/walk|park|hang|something to do|activity/i.test(p.name)) : '') + picksHtml() : ''}` : '';
       return head + opts + sug;
     }).join('')}
     ${parted ? nightHtml(final ? final.parts : partWin, people, !!final, pastDay) : ''}
@@ -409,7 +411,7 @@ function nightHtml(winners, people, locked = false, pastDay = false) {
     const hopLine = hop == null ? '' : `<div class="hop" ${hop > 5 ? 'style="color:#b4441c"' : ''}>↓ ${hop < 0.1 ? 'next door' : hop.toFixed(1) + ' mi'} · ~${Math.max(1, Math.round(hop <= 0.8 ? hop * 20 : hop * 2.5 + 3))} min ${hop <= 0.8 ? 'walk' : 'drive'}${hop > 5 ? ' · far apart' : ''}</div>`;
     const near = off ? nearestOn(t, pd, p.time) : null;
     return `${hopLine}<div class="night-row"><span class="ntime">${multiDay() ? esc(wday(pd)) + '<br>' : ''}${p.time ? esc(t12(p.time)) : '—'}</span><span class="grow">
-      <div class="t">${o ? esc(stopLabel(p, o)) : `${esc(p.name)}: tied or still voting`}</div>
+      <div class="t">${o ? esc(stopLabel(p, o)) : 'Tied or still voting'}</div>
       ${o && o.own && o.business ? `<div class="who">📍 ${esc(o.business)}</div>` : ''}
       ${off ? `<div class="off">⚠️ Not on at ${esc(t12(p.time))} (${esc(whyOff(t, pd))})${near ? `. Closest: ${esc(t12(near))}` : ''}</div>` : ''}
       ${o && o.own ? (ownMap(o) ? `<a href="${ownMap(o)}" target="_blank" rel="noopener">Directions ›</a>` : '') : o && o.lat ? `<a href="${gmaps(o)}" target="_blank" rel="noopener">Directions ›</a>` : ''}
@@ -1177,28 +1179,37 @@ async function addOwn(own) {
 const isStop = v => v === 'before' || v === 'after';
 let stopOpen = false; // the add-a-stop box, folded into one button until tapped
 
-// "What we need from you": what's left for this person, ticked off as they go,
-// each a tap away. "You're all set" once it's all done.
+// "Your turn": what's left for this person, in plain words, ticked off as they
+// go, each a tap away. "You're all set" once it's all done.
 function stepsHtml(sections, mine, final, invite, parted, rsvpShown) {
   if (poll.closed) return '';
   const steps = [];
   if (final) {
-    if (rsvpShown && !poll.my_rsvp) steps.push(['in', 'Say if you’re in', false]);
+    if (rsvpShown && !poll.my_rsvp) steps.push(['in', 'Tell everyone if you’re coming', false]);
   } else {
-    if (parted && Array.isArray(poll.times)) steps.push(['day', 'Tap the days you can do', (poll.my_times || []).length > 0]);
+    // Only when the page asks which day (a one-day plan without a set day).
+    if (parted && Array.isArray(poll.times) && !multiDay()) steps.push(['day', 'Tick every day you could do', (poll.my_times || []).length > 0]);
+    if (parted && 'part_times' in poll) {
+      const timed = sections.filter(x => x.p && x.p.time);
+      const ticked = x => (poll.part_times || []).some(r => r.part === x.pi && r.mine);
+      if (timed.length) {
+        const done = timed.filter(ticked).length, next = timed.find(x => !ticked(x)) || timed[0];
+        steps.push([`part-${next.pi}`, timed.length === 1 ? `Tick the time if it works for you (or suggest another)` : `Tick the times that work for you (${done} of ${timed.length} done)`, done === timed.length]);
+      }
+    }
     if (parted) {
       const open = sections.filter(x => x.idxs.length > 1);
       if (open.length) {
         const voted = x => x.idxs.some(i => mine.includes(i));
         const done = open.filter(voted).length, next = open.find(x => !voted(x)) || open[0];
-        steps.push([`part-${next.pi}`, open.length === 1 ? `Vote on ${open[0].p.name.toLowerCase()}` : `Vote on each stop (${done} of ${open.length} done)`, done === open.length]);
+        steps.push([`part-${next.pi}`, open.length === 1 ? `Pick the place you’d like at ${t12(open[0].p.time) || 'that stop'}` : `Pick a place at each time with a choice (${done} of ${open.length} done)`, done === open.length]);
       }
     } else if (!invite) steps.push(['vote', 'Tap the places you’d go', mine.length > 0]);
-    if (rsvpShown) steps.push(['in', 'Say if you’re in', !!poll.my_rsvp]);
+    if (rsvpShown) steps.push(['in', 'Tell everyone if you’re coming', !!poll.my_rsvp]);
   }
   if (!steps.length) return '';
   if (steps.every(x => x[2])) return `<div class="steps done"><b>✅ You’re all set.</b> ${final ? 'See you there.' : 'Change anything below until it’s locked in.'}</div>`;
-  return `<div class="steps"><div class="steps-h">What we need from you</div>${steps.map(([id, label, done], k) =>
+  return `<div class="steps"><div class="steps-h">Your turn: tap a step to jump there</div>${steps.map(([id, label, done], k) =>
     `<button class="step ${done ? 'ok' : ''}" data-step="${id}"><span class="dotn">${done ? '✓' : k + 1}</span>${esc(label)}${done ? '' : '<span class="go">›</span>'}</button>`).join('')}</div>`;
 }
 // A restaurant's happy hour ("half-price apps") is a meal; only a deal about
@@ -1429,13 +1440,13 @@ function rsvpHtml(final, fullyClosed) {
 const placeName = o => (o && (o.own ? o.title : o.business || o.title)) || '';
 // "Brunch: Zest", and "Coffee at Publik Coffee" when your own stop is named like the stop.
 const sameName = (p, o) => !!(o && o.own) && String(o.title || '').trim().toLowerCase() === String((p && p.name) || '').trim().toLowerCase();
-const stopLabel = (p, o) => (sameName(p, o) ? `${p.name}${o.business ? ` at ${o.business}` : ''}` : `${p.name}: ${placeName(o)}`);
+const stopLabel = (p, o) => (sameName(p, o) ? `${p.name}${o.business ? ` at ${o.business}` : ''}` : placeName(o));
 const gmaps = o => `https://www.google.com/maps/dir/?api=1&destination=${o.lat},${o.lng}`;
 // Who's leading (or tied) and what you picked, at the top.
 function summaryHtml(sections, partWin, win, lead, mine, people) {
   let line;
   const votedIn = pi => poll.options.some((o, i) => o.part === pi && (poll.counts[i] || 0) > 0);
-  if ((poll.parts || []).length) line = poll.parts.map((p, pi) => `${p.name}: ${partWin[pi] >= 0 ? placeName(poll.options[partWin[pi]]) : votedIn(pi) ? 'tied' : 'no votes yet'}`).join(' · ');
+  if ((poll.parts || []).length) line = poll.parts.map((p, pi) => `${p.time ? t12(p.time) : p.name}: ${partWin[pi] >= 0 ? placeName(poll.options[partWin[pi]]) : votedIn(pi) ? 'tied' : 'no votes yet'}`).join(' · ');
   else line = !people ? 'No votes yet. Tap every place you’d be happy with.' : win >= 0 ? `🏆 ${placeName(poll.options[win])} leads · ${poll.counts[win]} of ${people}` : lead.length > 1 ? `Tied: ${lead.map(i => placeName(poll.options[i])).join(', ')}` : 'No votes yet';
   const you = !(poll.parts || []).length && mine.length ? `<div class="who">You picked ${esc(mine.map(i => placeName(poll.options[i])).join(', '))}</div>` : '';
   const lookAt = win >= 0 ? `<button class="linkbtn" data-det-go="${win}">See ${esc(placeName(poll.options[win]))}’s details ›</button>` : '';
