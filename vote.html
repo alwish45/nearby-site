@@ -3,9 +3,10 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Vote · near.by</title>
-<meta property="og:title" content="Help pick where we go 🗳️">
-<meta property="og:description" content="Tap your favorite. No app or account needed.">
+<title>You’re invited · near.by</title>
+<meta property="og:title" content="You’re invited: help make the plan 🗓️">
+<meta property="og:description" content="See the plan, vote on places and times, or suggest your own. No app or account needed.">
+<meta name="description" content="See the plan, vote on places and times, or suggest your own. No app or account needed.">
 <style>
   :root { --bg:#faf8f4; --ink:#14110d; --muted:#6b655b; --accent:#e8542a; --line:#ece8e0; --soft:#fff1e6; --win:#ffe2cc; }
   * { box-sizing:border-box; }
@@ -286,6 +287,7 @@ function render() {
   app.innerHTML = `
     <h1>${esc(poll.title || (invite ? 'Who’s in?' : 'Where should we go?'))}</h1>
     ${peopleHtml()}
+    ${!poll.closed && !poll.final ? '<button class="linkbtn" id="invitemore" style="display:block;margin:2px 0 8px">👋 Invite more friends</button>' : ''}
     <p class="sub">${invite
       ? (poll.closed ? 'This invite has closed.' : 'Tap “I’m down” if you’re in. No app needed.')
       : `${poll.closed ? 'This vote has closed.' : final ? 'The plan is set. Say if you’re in below.' : (poll.parts || []).length ? 'Tap everything you’d be happy with. The most popular pick wins each stop. No app needed.' : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
@@ -350,6 +352,7 @@ function render() {
   document.getElementById('savename')?.addEventListener('click', saveName);
   document.getElementById('name')?.addEventListener('keydown', e => { if (e.key === 'Enter') saveName(); });
   document.getElementById('name')?.addEventListener('input', e => { try { if (e.target.value.trim()) localStorage.setItem('nearby.name', e.target.value.trim()); } catch {} });
+  document.getElementById('invitemore')?.addEventListener('click', inviteMore);
   document.getElementById('chname')?.addEventListener('click', () => { nameAsk = true; render(); document.getElementById('name')?.focus(); });
   document.getElementById('ics')?.addEventListener('click', downloadIcs);
   document.getElementById('textopen')?.addEventListener('click', () => { phoneOpen = true; render(); document.getElementById('phone')?.focus(); });
@@ -1430,6 +1433,31 @@ function summaryHtml(sections, partWin, win, lead, mine, people) {
 // Who's planning: everyone who voted, answered, ticked a time or left a note,
 // as initials ("Ann, Bo and 3 others are planning").
 const FACE_COLORS = ['#e8542a', '#1f7a3d', '#2563eb', '#9333ea', '#c2410c', '#0f766e', '#be185d'];
+// The invite: the plan at a glance (each time and its places, "(vote)" where
+// there are a few) and what friends can do; the same as the app sends.
+function inviteText() {
+  const parts = poll.parts || [];
+  const rows = parts.length
+    ? parts.map((p, pi) => ({ date: partDay(p), time: p.time, names: [...new Set(poll.options.filter(o => o.part === pi).map(placeName))] }))
+    : [{ date: planDayOf(), time: null, names: [...new Set(poll.options.map(placeName))] }];
+  const days = [...new Set(rows.map(r => r.date).filter(Boolean))].sort(), multi = days.length > 1, title = poll.title || 'Plans';
+  const md = d => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const named = d => title.toLowerCase().includes(new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' }).toLowerCase());
+  const last = days[days.length - 1], sameMonth = days.length && md(days[0]).split(' ')[0] === md(last).split(' ')[0];
+  const head = multi ? `${title} · ${named(days[0]) ? '' : `${wday(days[0])}–${wday(last)}, `}${md(days[0])}–${sameMonth ? md(last).split(' ')[1] : md(last)}`
+    : days[0] ? `${title} · ${named(days[0]) ? md(days[0]) : day(days[0])}` : title;
+  const lines = rows.slice(0, 6).map(r => { const n = r.names; const what = n.length > 3 ? `${n.slice(0, 3).join(', ')} +${n.length - 3} more` : n.length > 1 ? `${n.slice(0, -1).join(', ')} or ${n[n.length - 1]}` : n[0] || 'TBD';
+    return `${multi && r.date ? wday(r.date) + ' ' : ''}${r.time ? t12(r.time) + ': ' : ''}${what}${n.length > 1 ? ' (vote)' : ''}`; });
+  const votes = rows.some(r => r.names.length > 1);
+  const ask = rows.length === 1 && !votes ? 'Say if you’re in' : votes ? 'Vote, suggest a place or another time' : 'Say if you’re in, or suggest a place or another time';
+  return [head, ...lines, `${ask} (no app needed): ${location.origin}${location.pathname}?p=${code}`].join('\n');
+}
+async function inviteMore() {
+  const text = inviteText();
+  try { if (navigator.share) { await navigator.share({ text }); return; } } catch (e) { if (e && e.name === 'AbortError') return; }
+  try { await navigator.clipboard.writeText(text); alert('Copied the invite. Paste it in your group chat.'); }
+  catch { prompt('Copy the invite:', text); }
+}
 function peopleHtml() {
   const names = [];
   const add = n => { const t = String(n || '').trim(); if (t && t !== 'Someone' && !names.includes(t)) names.push(t); };
