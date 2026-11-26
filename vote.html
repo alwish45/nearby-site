@@ -63,6 +63,7 @@
   .askname { position:fixed; inset:0; background:rgba(20,17,13,.45); display:flex; align-items:flex-end; justify-content:center; z-index:50; }
   .askname .sheet { background:#faf8f4; width:100%; max-width:520px; border-radius:18px 18px 0 0; padding:18px 16px 22px; text-align:left; }
   .askname .t { font-size:19px; font-weight:800; }
+  .hopbetween { font-size:13px; font-weight:700; color:#6b655b; text-align:center; margin:2px 0 6px; }
   .dayhead { font-size:17px; font-weight:900; margin:14px 0 6px; text-align:left; }
   .calrow { display:flex; gap:8px; margin-top:12px; }
   .calbtn { flex:1; text-align:center; border:1.5px solid #e2ddd3; background:#fff; border-radius:12px; padding:11px 6px; font-weight:800; color:#14110d; text-decoration:none; font-size:15px; }
@@ -304,7 +305,8 @@ function render() {
       // A plan ("Dinner → Drinks"): each part has its own places and winner.
       const w = p ? partWin[pi] : win, secTop = Math.max(0, ...idxs.map(i => poll.counts[i] || 0));
       const fixed = !!p && idxs.length === 1;
-      const dhead = p && multiDay() && (pi === 0 || partDay(poll.parts[pi - 1]) !== partDay(p)) ? `<h3 class="dayhead">📅 ${esc(day(partDay(p)))}</h3>${partDay(p) >= isoDay(utahNow()) ? weatherHtml(partDay(p)) : ''}` : '';
+      const hop = p && pi > 0 && partDay(poll.parts[pi - 1]) === partDay(p) ? hopText(poll.options.filter(o => o.part === pi - 1), poll.options.filter(o => o.part === pi)) : null;
+      const dhead = (hop ? `<div class="hopbetween">${esc(hop)}</div>` : '') + (p && multiDay() && (pi === 0 || partDay(poll.parts[pi - 1]) !== partDay(p)) ? `<h3 class="dayhead">📅 ${esc(day(partDay(p)))}</h3>${partDay(p) >= isoDay(utahNow()) ? weatherHtml(partDay(p)) : ''}` : '');
       const head = dhead + (p ? `<div class="part-head" id="step-part-${pi}"><span class="pnum">${pi + 1}</span><span class="pname">${esc(p.name)}${p.time ? ` · ${esc(t12(p.time))}` : ''}</span><span class="pstate">${final ? '✅ Set' : fixed ? (poll.options[idxs[0]].added_by ? `💡 From ${esc(poll.options[idxs[0]].added_by)}` : '📌 Set') : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span></div>${'part_times' in poll && !final && !poll.closed ? partTimesHtml(pi, p) : ''}` : '');
       const opts = idxs.map(i => {
         const o = poll.options[i];
@@ -1017,6 +1019,16 @@ const planDayOf = () => (poll && ((poll.final && poll.final.day) || poll.plan_da
 // Multi-day plans: a stop's own day, else the plan's; and whether the stops span days.
 const partDay = p => (p && p.date) || planDayOf() || isoDay(utahNow());
 const multiDay = () => new Set(((poll && poll.parts) || []).map(p => p.date).filter(Boolean)).size > 1;
+// "↓ 1.2 mi · ~6 min drive" between two stops; a range when it depends on the pick.
+function hopText(from, to) {
+  const a = from.filter(o => o && o.lat != null), b = to.filter(o => o && o.lat != null);
+  if (!a.length || !b.length) return null;
+  const r = x => x * Math.PI / 180;
+  const mi = (x, y) => { const dLat = r(y.lat - x.lat), dLng = r(y.lng - x.lng); const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(x.lat)) * Math.cos(r(y.lat)) * Math.sin(dLng / 2) ** 2; return 7917.5 * Math.asin(Math.sqrt(h)); };
+  const d = a.flatMap(x => b.map(y => mi(x, y))), lo = Math.min(...d), hi = Math.max(...d);
+  const trip = m => `~${Math.max(1, Math.round(m <= 0.8 ? m * 20 : m * 2.5 + 3))} min ${m <= 0.8 ? 'walk' : 'drive'}`;
+  return hi - lo < 0.3 ? `↓ ${lo < 0.1 ? 'next door' : lo.toFixed(1) + ' mi'} · ${trip(lo)}` : `↓ ${Math.max(lo, 0.1).toFixed(1)}–${hi.toFixed(1)} mi, depending on the pick`;
+}
 const wday = d => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
 // Which day? For a plan: tick every day that works; the best one is marked.
 // The same day-and-time votes as When works?, at the first stop's time.
