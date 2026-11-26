@@ -62,6 +62,8 @@
   .askname { position:fixed; inset:0; background:rgba(20,17,13,.45); display:flex; align-items:flex-end; justify-content:center; z-index:50; }
   .askname .sheet { background:#faf8f4; width:100%; max-width:520px; border-radius:18px 18px 0 0; padding:18px 16px 22px; text-align:left; }
   .askname .t { font-size:19px; font-weight:800; }
+  .calrow { display:flex; gap:8px; margin-top:12px; }
+  .calbtn { flex:1; text-align:center; border:1.5px solid #e2ddd3; background:#fff; border-radius:12px; padding:11px 6px; font-weight:800; color:#14110d; text-decoration:none; font-size:15px; }
   .whenrow { display:flex; align-items:center; justify-content:center; gap:18px; margin:6px 0 4px; }
   .whenstep { width:48px; height:48px; border-radius:24px; border:1.5px solid #e2ddd3; background:#fff; font-size:26px; font-weight:800; cursor:pointer; }
   .whentime { font-size:34px; font-weight:900; color:#e8542a; min-width:140px; text-align:center; letter-spacing:-1px; }
@@ -879,7 +881,12 @@ function feedIcon(d) {
 }
 const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 function feedWhen(d) {
-  const time = d.start_time ? `${t12(d.start_time)}${d.end_time ? '–' + t12(d.end_time) : ''}` : d.end_time ? `until ${t12(d.end_time)}` : '';
+  // No set time: the place's hours that day ("open 11am–10pm"), when known.
+  const hrs = Array.isArray(d.hours) ? d.hours : Array.isArray(d.businesses?.hours) ? d.businesses.hours : null;
+  const onDay = new Date((futureDay() || isoDay(utahNow())) + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long' });
+  const open = hrs ? (hrs.find(h => h.day === onDay) || {}).hours : null;
+  const opens = open ? (/closed/i.test(open) ? 'closed that day' : 'open ' + String(open).replace(/:00/g, '').replace(/\s?AM/gi, 'am').replace(/\s?PM/gi, 'pm').replace(/\s*[–-]\s*/g, '–')) : '';
+  const time = d.start_time ? `${t12(d.start_time)}${d.end_time ? '–' + t12(d.end_time) : ''}` : d.end_time ? `until ${t12(d.end_time)}` : opens;
   if (d.deal_type === 'recurring') {
     const days = (d.recurring_days || []).map(Number);
     const which = !days.length || days.length === 7 ? 'Every day' : days.length <= 3 ? days.map(i => DOW[i]).join(', ') : 'Weekly';
@@ -1467,7 +1474,33 @@ function finalHtml(f) {
   }).join('');
   const fday = f.day || poll.plan_day;
   return `<div class="final"><h2>✅ It’s set${when ? ' · ' + esc(when) : ''}</h2>${fday && fday >= isoDay(utahNow()) ? weatherHtml(fday) : ''}${stops}
-    <button class="downbtn" id="ics" style="margin-top:12px">📅 Add to calendar</button></div>`;
+    ${(() => { const l = planCalLinks(); return l ? `<div class="calrow"><a class="calbtn" href="${esc(l.google)}" target="_blank" rel="noopener">📅 Google Calendar</a><a class="calbtn" href="${esc(l.outlook)}" target="_blank" rel="noopener">📅 Outlook</a></div>` : ''; })()}
+    <button class="downbtn" id="ics" style="margin-top:10px">📅 Apple / other calendar</button></div>`;
+}
+// Google / Outlook links for the set plan: one entry from the first stop to two
+// hours after the last, every stop in the notes (Utah time; Outlook takes the
+// times as the viewer's own zone).
+function planCalLinks() {
+  const f = poll.final; if (!f) return null;
+  const picks = Array.isArray(f.parts) ? f.parts : [f.option];
+  const date = f.day || poll.plan_day || isoDay(utahNow());
+  const rows = picks.map((i, k) => { const o = poll.options[i] || {}, p = Array.isArray(f.parts) ? poll.parts[k] : null; return { o, p, t: (p && p.time) || f.time || (o.start_time ? String(o.start_time).slice(0, 5) : null) }; });
+  const times = rows.map(r => r.t).filter(Boolean).map(t => String(t).slice(0, 5)).sort();
+  const pad = n => String(n).padStart(2, '0');
+  const at = (hhmm, plus) => { const [y, m, d] = date.split('-').map(Number), [h, mi] = hhmm.split(':').map(Number); const t = new Date(Date.UTC(y, m - 1, d, h, mi + plus)); return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}T${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}:00`; };
+  const title = poll.title || 'Plans', e = encodeURIComponent;
+  const details = [...rows.map(r => `${r.t ? t12(r.t) + ' ' : ''}${r.p ? stopLabel(r.p, r.o) : placeName(r.o)}`), '', location.href].join('\n');
+  const first = rows[0] ? rows[0].o : {};
+  const loc = first.own ? first.business || '' : [first.business, first.city].filter(Boolean).join(', ');
+  if (!times.length) {
+    const next = at('00:00', 1440).slice(0, 10);
+    return { google: `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${e(title)}&dates=${date.replace(/-/g, '')}/${next.replace(/-/g, '')}&details=${e(details)}&location=${e(loc)}`,
+      outlook: `https://outlook.live.com/calendar/0/action/compose?path=%2Fcalendar%2Faction%2Fcompose&rru=addevent&subject=${e(title)}&allday=true&startdt=${date}&enddt=${next}&body=${e(details)}&location=${e(loc)}` };
+  }
+  const len = mins(times[times.length - 1]) - mins(times[0]) + 120;
+  const s0 = at(times[0], 0), s1 = at(times[0], len), c = x => x.replace(/[-:]/g, '');
+  return { google: `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${e(title)}&dates=${c(s0)}/${c(s1)}&ctz=America/Denver&details=${e(details)}&location=${e(loc)}`,
+    outlook: `https://outlook.live.com/calendar/0/action/compose?path=%2Fcalendar%2Faction%2Fcompose&rru=addevent&subject=${e(title)}&startdt=${e(s0)}&enddt=${e(s1)}&body=${e(details)}&location=${e(loc)}` };
 }
 // A calendar file with one entry per stop (two hours each, Utah time).
 function downloadIcs() {
