@@ -394,7 +394,7 @@ function render() {
     ${final ? finalHtml(final) : !invite && !parted ? summaryHtml(sections, partWin, win, lead, mine, people) : ''}
     ${!parted && !invite ? '<div id="step-vote"></div>' : ''}
     ${parted && Array.isArray(poll.times) && !final && !poll.closed && !multiDay() ? dayVoteHtml() : ''}
-    ${parted && poll.is_creator && !final && !poll.closed ? `<button class="edittoggle ${editing ? 'on' : ''}" id="edittoggle" aria-expanded="${editing}"><b>${editing ? '✓ Done editing' : '✏️ Edit stops'}</b><span>${editing ? 'Tap ↔ under a place to move it, or ✕ to remove a stop' : 'Move places to other times, or remove a stop'}</span></button>` : ''}
+    ${parted && poll.is_creator && !final && !poll.closed ? `<button class="edittoggle ${editing ? 'on' : ''}" id="edittoggle" aria-expanded="${editing}"><b>${editing ? '✓ Done changing' : '✏️ Change the stops'}</b><span>${editing ? 'Tap ↔ under a place to move it to another time, or ✕ by a time to take that stop out' : 'Only you: move a place to another time, or take a stop out'}</span></button>` : ''}
     ${sections.map(({ p, pi, idxs }) => {
       // A plan ("Dinner → Drinks"): each part has its own places and winner.
       const w = p ? partWin[pi] : win, secTop = Math.max(0, ...idxs.map(i => poll.counts[i] || 0));
