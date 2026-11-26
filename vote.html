@@ -810,9 +810,9 @@ function goodPick(d) {
 }
 // Suggest another place: a feed you can narrow, like the app's picker.
 // Search, what kind, how far (from the vote's first place) and what time.
-const PICK_CATS = [['', 'All', '⭐'], ['food', 'Food', '🍽️'], ['music', 'Live music', '🎵'], ['trivia', 'Trivia', '🎯'], ['comedy', 'Comedy', '😂'],
+const PICK_CATS = [['', 'All', '⭐'], ['free', 'Free', '🆓'], ['food', 'Food', '🍽️'], ['music', 'Live music', '🎵'], ['trivia', 'Trivia', '🎯'], ['comedy', 'Comedy', '😂'],
   ['theater', 'Theater', '🎭'], ['sports', 'Sports', '🏈'], ['brunch', 'Brunch', '🌅'], ['happy hour', 'Happy hour', '🍻'], ['drinks', 'Drinks', '🍸'],
-  ['pizza', 'Pizza', '🍕'], ['taco', 'Tacos', '🌮'], ['sushi', 'Sushi', '🍱'], ['burger', 'Burgers', '🍔'], ['family', 'Family', '🎈'], ['outdoor', 'Outdoors', '🌳'], ['free', 'Free', '🆓']];
+  ['pizza', 'Pizza', '🍕'], ['taco', 'Tacos', '🌮'], ['sushi', 'Sushi', '🍱'], ['burger', 'Burgers', '🍔'], ['family', 'Family', '🎈'], ['outdoor', 'Outdoors', '🌳']];
 // The same kinds the app matches by place type or title, not only tags.
 const FOOD_KIND = { pizza: [/pizza|\bslices?\b/i, ['pizza']], taco: [/tacos?\b|burrito|enchilada|nachos|quesadilla/i, ['mexican']], sushi: [/sushi|sashimi|\bpoke\b|\brolls?\b/i, ['sushi']], burger: [/burger/i, []] };
 const MILES = [[0, 'Any distance'], [1, 'Under 1 mi'], [3, 'Under 3 mi'], [5, 'Under 5 mi']];
@@ -899,7 +899,7 @@ function feedCard(d) {
 }
 function feedBody() {
   const q = feed.q.trim().toLowerCase();
-  const scoped = feedPool().filter(d => (!q || findText(d).includes(q)) && (!feed.mi || (d.distance_m != null && d.distance_m <= feed.mi * 1609.34)) && slotOk(d, feed.slot) && (!feed.free || isFree(d)) && (!feed.under || isUnder(d, feed.under)));
+  const scoped = feedPool().filter(d => (!q || findText(d).includes(q)) && (!feed.mi || (d.distance_m != null && d.distance_m <= feed.mi * 1609.34)) && slotOk(d, feed.slot) && (!feed.under || isUnder(d, feed.under)));
   const chips = (rows, on, attr, count) => `<div class="chips">${rows.map(([k, label, icon]) => {
     const n = count ? count(k) : null;
     if (count && k && !n && k !== on) return ''; // nothing of that kind here
@@ -910,10 +910,10 @@ function feedBody() {
   const list = scoped.filter(d => catOk(d, feed.cat) && !seen.has(d.business_name) && seen.add(d.business_name))
     .sort((a, b) => (a.distance_m ?? 1e9) - (b.distance_m ?? 1e9));
   const shown = list.slice(0, feed.shown);
-  const empty = feed.q.trim() ? `Nothing nearby matches “${esc(feed.q.trim())}”.` : `Nothing matches those filters. Try All, a wider distance${feed.free || feed.under ? ', any price' : ''} or another time.`;
+  const empty = feed.q.trim() ? `Nothing nearby matches “${esc(feed.q.trim())}”.` : `Nothing matches those filters. Try All, a wider distance${feed.under ? ', any price' : ''} or another time.`;
   return chips(PICK_CATS, feed.cat, 'data-cat', k => (k ? new Set(scoped.filter(d => catOk(d, k)).map(d => d.business_name)).size : new Set(scoped.map(d => d.business_name)).size))
     + chips(MILES, feed.mi, 'data-mi') + chips(SLOTS, feed.slot, 'data-slot')
-    + `<div class="chips"><button class="chip ${feed.free ? 'on' : ''}" id="feedfree" aria-pressed="${feed.free}">${feed.free ? '✓ ' : ''}🆓 Free only</button>${[10, 20].map(n => `<button class="chip ${feed.under === n ? 'on' : ''}" data-under="${n}" aria-pressed="${feed.under === n}">${feed.under === n ? '✓ ' : ''}${n === 10 ? '💵 ' : ''}Under $${n}</button>`).join('')}</div>`
+    + `<div class="chips">${[10, 20].map(n => `<button class="chip ${feed.under === n ? 'on' : ''}" data-under="${n}" aria-pressed="${feed.under === n}">${feed.under === n ? '✓ ' : ''}${n === 10 ? '💵 ' : ''}Under $${n}</button>`).join('')}</div>`
     + (shown.length ? shown.map(feedCard).join('') : `<p class="sub">${empty}</p>`)
     + (list.length > shown.length ? `<button class="suggest" id="feedmore">Show ${Math.min(FEED_STEP, list.length - shown.length)} more</button>` : '');
 }
@@ -933,7 +933,6 @@ function bindFeed() {
   body.querySelectorAll('[data-mi]').forEach(b => b.addEventListener('click', () => { feed.mi = Number(b.dataset.mi); feed.shown = FEED_STEP; redrawFeed(); }));
   body.querySelectorAll('[data-slot]').forEach(b => b.addEventListener('click', () => { feed.slot = b.dataset.slot; feed.shown = FEED_STEP; redrawFeed(); }));
   document.getElementById('feedmore')?.addEventListener('click', () => { feed.shown += FEED_STEP; redrawFeed(); });
-  document.getElementById('feedfree')?.addEventListener('click', () => { feed.free = !feed.free; feed.shown = FEED_STEP; redrawFeed(); });
   body.querySelectorAll('[data-under]').forEach(b => b.addEventListener('click', () => { const n = Number(b.dataset.under); feed.under = feed.under === n ? 0 : n; feed.shown = FEED_STEP; redrawFeed(); }));
 }
 function redrawFeed() {
