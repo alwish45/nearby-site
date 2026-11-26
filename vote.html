@@ -302,7 +302,7 @@ function render() {
       // A plan ("Dinner → Drinks"): each part has its own places and winner.
       const w = p ? partWin[pi] : win, secTop = Math.max(0, ...idxs.map(i => poll.counts[i] || 0));
       const fixed = !!p && idxs.length === 1;
-      const dhead = p && multiDay() && (pi === 0 || partDay(poll.parts[pi - 1]) !== partDay(p)) ? `<h3 class="dayhead">📅 ${esc(day(partDay(p)))}</h3>` : '';
+      const dhead = p && multiDay() && (pi === 0 || partDay(poll.parts[pi - 1]) !== partDay(p)) ? `<h3 class="dayhead">📅 ${esc(day(partDay(p)))}</h3>${partDay(p) >= isoDay(utahNow()) ? weatherHtml(partDay(p)) : ''}` : '';
       const head = dhead + (p ? `<div class="part-head" id="step-part-${pi}"><span class="pnum">${pi + 1}</span><span class="pname">${esc(p.name)}${p.time ? ` · ${esc(t12(p.time))}` : ''}</span><span class="pstate">${final ? '✅ Set' : fixed ? (poll.options[idxs[0]].added_by ? `💡 From ${esc(poll.options[idxs[0]].added_by)}` : '📌 Set') : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span></div>${'part_times' in poll && !final && !poll.closed ? partTimesHtml(pi, p) : ''}` : '');
       const opts = idxs.map(i => {
         const o = poll.options[i];
@@ -413,7 +413,7 @@ function nightHtml(winners, people, locked = false, pastDay = false) {
   const located = stops.filter(o => o && o.lat);
   const route = located.length >= 2 ? `https://www.google.com/maps/dir/?api=1&origin=${located[0].lat},${located[0].lng}&destination=${located[located.length - 1].lat},${located[located.length - 1].lng}${located.length > 2 ? '&waypoints=' + encodeURIComponent(located.slice(1, -1).map(o => `${o.lat},${o.lng}`).join('|')) : ''}` : '';
   const dayPlan = poll.parts.some(p => p.time && String(p.time).slice(0, 5) < '16:00');
-  return `<div class="box"><h2>${multiDay() ? '🗓️ Your plans · ' + esc(day(partDay(poll.parts[0]))) + ' – ' + esc(day(partDay(poll.parts[poll.parts.length - 1]))) : `${dayPlan ? '☀️ Your day' : '🌃 Your night'} · ${pastDay ? 'was ' + esc(day(pday)) : pday === today ? (dayPlan ? 'Today' : 'Tonight') : esc(day(pday))}`}${locked ? ' · set' : ''}</h2>${pastDay ? '' : weatherHtml(pday, dayPlan)}${rows}
+  return `<div class="box"><h2>${multiDay() ? '🗓️ Your plans · ' + esc(day(partDay(poll.parts[0]))) + ' – ' + esc(day(partDay(poll.parts[poll.parts.length - 1]))) : `${dayPlan ? '☀️ Your day' : '🌃 Your night'} · ${pastDay ? 'was ' + esc(day(pday)) : pday === today ? (dayPlan ? 'Today' : 'Tonight') : esc(day(pday))}`}${locked ? ' · set' : ''}</h2>${multiDay() ? [...new Set(poll.parts.map(partDay))].sort().filter(d => d >= today).map(d => weatherHtml(d, false, wday(d))).join('') : pastDay ? '' : weatherHtml(pday, dayPlan)}${rows}
     ${route ? `<div style="text-align:left;margin-top:8px"><a href="${route}" target="_blank" rel="noopener" style="color:#c2410c;font-weight:700;text-decoration:none">🗺️ The whole route in Maps ›</a></div>` : ''}
     ${locked ? '' : `<div class="who" style="margin-top:6px">${winners.every(w => w >= 0) ? 'Every part has a leader. The person who started it locks in the final plan.' : 'Each part’s leader shows here as friends vote.'}</div>`}</div>`;
 }
@@ -1448,13 +1448,14 @@ function peopleHtml() {
 // The forecast for the plan's day where it starts, once it's within the
 // National Weather Service's week ahead. Fetched once per day and place.
 const weather = {};
-function weatherHtml(ds, dayPlan) {
-  const at = (poll.options || []).find(o => o.lat);
+function weatherHtml(ds, dayPlan, label = '') {
+  const onDay = multiDay() ? (poll.options || []).find(o => o.lat && poll.parts[o.part] && partDay(poll.parts[o.part]) === ds) : null;
+  const at = onDay || (poll.options || []).find(o => o.lat);
   if (!at || !ds) return '';
   const key = `${ds}|${at.lat.toFixed(2)},${at.lng.toFixed(2)}`;
   if (!(key in weather)) { weather[key] = null; loadWeather(key, ds, at); }
   const w = weather[key];
-  return w ? `<div class="wx">${esc(w)}</div>` : '';
+  return w ? `<div class="wx">${label ? esc(label) + ': ' : ''}${esc(w)}</div>` : '';
 }
 async function loadWeather(key, ds, at) {
   const ahead = (new Date(ds + 'T12:00:00') - new Date(isoDay(utahNow()) + 'T12:00:00')) / 864e5;
@@ -1483,7 +1484,7 @@ function finalHtml(f) {
       ${o.own ? (ownMap(o) ? `<a href="${ownMap(o)}" target="_blank" rel="noopener">Directions ›</a>` : '') : o.lat ? `<a href="${gmaps(o)}" target="_blank" rel="noopener">Directions ›</a>` : ''}</div>`;
   }).join('');
   const fday = f.day || poll.plan_day;
-  return `<div class="final"><h2>✅ It’s set${when ? ' · ' + esc(when) : ''}</h2>${fday && fday >= isoDay(utahNow()) ? weatherHtml(fday) : ''}${stops}
+  return `<div class="final"><h2>✅ It’s set${when ? ' · ' + esc(when) : ''}</h2>${multiDay() ? [...new Set(poll.parts.map(partDay))].sort().filter(d => d >= isoDay(utahNow())).map(d => weatherHtml(d, false, wday(d))).join('') : fday && fday >= isoDay(utahNow()) ? weatherHtml(fday) : ''}${stops}
     ${(() => { const days = multiDay() ? [...new Set(poll.parts.map(partDay))].sort() : [null];
       return days.map(d => { const l = planCalLinks(d); return l ? `${d ? `<div class="who" style="margin-top:10px">${esc(day(d))}</div>` : ''}<div class="calrow"${d ? ' style="margin-top:4px"' : ''}><a class="calbtn" href="${esc(l.google)}" target="_blank" rel="noopener">📅 Google Calendar</a><a class="calbtn" href="${esc(l.outlook)}" target="_blank" rel="noopener">📅 Outlook</a></div>` : ''; }).join(''); })()}
     <button class="downbtn" id="ics" style="margin-top:10px">📅 Apple / other calendar</button></div>`;
