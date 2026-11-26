@@ -154,8 +154,8 @@
 <main>
   <div class="logo">near<span>.</span>by</div>
   <div id="app"><p class="sub">Loading the vote…</p></div>
-  <a class="cta orange" id="getapp" href="https://apps.apple.com/us/app/id6812937568">Get near.by: see what's happening near you</a>
-  <p class="note">Happy hours, specials and events nearby, plus votes like this one.</p>
+  <a class="cta orange" id="getapp" href="https://apps.apple.com/us/app/id6812937568">Make your own plan on near.by</a>
+  <p class="note">Pick things happening nearby, invite your friends, settle it together and go. Free.</p>
 </main>
 <script>
 // Friends vote here without the app or an account. Talks to the public
@@ -226,6 +226,7 @@ function moveHtml(o, i, pi, p) {
 async function moveOption(i, to, time) {
   if (saving) return;
   const o = poll.options[i], from = poll.parts[o.part];
+  if (!(await stopsUnchanged())) return;
   saving = true;
   try {
     poll = await rpc('move_poll_option', { p_code: code, p_creator_key: me, p_option: i,
@@ -327,7 +328,7 @@ function render() {
     ${!poll.closed && !poll.final ? '<button class="linkbtn" id="invitemore" style="display:block;margin:2px 0 8px">👋 Invite more friends</button>' : ''}
     <p class="sub">${invite
       ? (poll.closed ? 'This invite has closed.' : 'Tap “I’m down” if you’re in. No app needed.')
-      : `${poll.closed ? 'This vote has closed.' : final ? 'The plan is set. Say if you’re in below.' : (poll.parts || []).length ? 'Tap everything you’d be happy with. The most popular pick wins each stop. No app needed.' : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
+      : `${poll.closed ? 'This vote has closed.' : final ? 'The plan is set. Say if you’re in below.' : (poll.parts || []).length ? 'Help shape this plan: tick the times that work, vote on places, suggest your own and comment on any time. No app needed.' : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
     ${pastDay ? `<p class="off" style="text-align:left">This was for ${esc(day(planDayOf()))}.</p>` : ''}
     ${!poll.closed && !final && poll.closes_at ? `<p class="who" style="text-align:left;margin:-4px 0 8px">Voting closes ${esc(new Date(poll.closes_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Denver' }))}</p>` : ''}
     ${askName ? `<div class="namecard"><div class="t">👋 What’s your name?</div><div class="m">So your friends know who voted and who’s in.</div>
@@ -353,7 +354,7 @@ function render() {
         const deal = o.price_info && !/^\s*tickets\s*$/i.test(o.price_info) ? `<span class="deal">${esc(o.price_info)}</span>` : '';
         const fit = p && p.time && !pastDay && !o.own ? onAt(timed(o), partDay(p), p.time) : null;
         const isFinal = finalIdx.includes(i);
-        const fitLn = fit === false ? `<div class="off">❌ Not on at ${esc(t12(p.time))} (${esc(whyOff(timed(o), pday))})</div>` : fit === true && !fixed ? `<div class="on">✅ On at ${esc(t12(p.time))}</div>` : '';
+        const fitLn = fit === false ? `<div class="off">❌ Not on at ${esc(t12(p.time))} (${esc(whyOff(timed(o), partDay(p)))})</div>` : fit === true && !fixed ? `<div class="on">✅ On at ${esc(t12(p.time))}</div>` : '';
         return `<button class="opt ${mine.includes(i) ? 'mine' : ''} ${isFinal ? 'final-pick' : final ? 'dim' : ''}" data-i="${i}" ${poll.closed || invite || fixed || final ? 'disabled' : ''} aria-pressed="${mine.includes(i)}">
         <span class="bar ${secTop && n === secTop ? 'win' : ''}" style="width:${pct}%"></span>
         <span class="row">${img}<span class="grow">
@@ -1061,6 +1062,7 @@ async function postNote(part = null) {
   const el = document.getElementById(part == null ? 'note' : `note-${part}`);
   const body = el ? el.value.trim() : '';
   if (!body || saving) return;
+  if (part != null && !(await stopsUnchanged())) return; // a stop's number may have changed
   saving = true;
   try {
     poll = await rpc('add_poll_comment', { p_code: code, p_voter_key: me, p_name: myName(), p_body: body, ...(part == null ? {} : { p_part: part }) });
@@ -1169,10 +1171,11 @@ async function stopsUnchanged() {
   checkingStops = true;
   let fresh = null;
   try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { return true; } finally { checkingStops = false; }
-  const names = x => (x?.parts || []).map(q => q.name).join('|');
+  // Each stop's name, day and time: a stop moved to another time renumbers the rest too.
+  const names = x => (x?.parts || []).map(q => `${q.name}@${q.date || ''} ${q.time || ''}`).join('|');
   if (!fresh || names(fresh) === names(poll)) return true;
-  poll = fresh; adding = false; ptOpen.clear(); lastWrite = Date.now(); render();
-  alert('The plan just changed: someone added or removed a stop. Have a look and try again.');
+  poll = fresh; adding = false; ptOpen.clear(); threadOpen.clear(); moveOpen = null; lastWrite = Date.now(); render();
+  alert('The plan just changed: someone added, moved or removed a stop while you were here. Have a look and try again.');
   return false;
 }
 async function togglePartTime(pi, t) {
