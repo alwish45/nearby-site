@@ -1189,7 +1189,7 @@ function addStop(id, where, own = null) {
     const base = parts.length ? (where === 'before' ? parts[0] : parts[parts.length - 1]).time : slot && slot.time ? String(slot.time).slice(0, 5) : null;
     let time = null;
     if (base) {
-      const m = Math.min(Math.max(mins(base) + (where === 'before' ? -90 : 120), 360), 1410);
+      const b0 = mins(base), m = where === 'before' ? (b0 - 90 >= 360 ? b0 - 90 : Math.max(300, b0 - 30)) : Math.min(b0 + 120, 1410);
       time = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
       const ds = poll.plan_day && poll.plan_day >= planToday() ? poll.plan_day : isoDay(utahNow());
       if (d.deal_id && onAt(d, ds, time) === false) {
