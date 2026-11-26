@@ -917,14 +917,14 @@ function notesHtml(name, typed) {
 let phoneOpen = false;
 function textsHtml() {
   if (!('my_text' in poll)) return '';
-  if (poll.my_text) return `<p class="who" style="margin:10px 0 0">📱 Texting ···${esc(poll.my_text)} when someone leaves a note · <button class="linkbtn" id="textstop">Stop</button></p>`;
-  if (!phoneOpen) return `<button class="linkbtn" id="textopen" style="margin-top:10px">📱 Text me when someone leaves a note</button>`;
+  if (poll.my_text) return `<p class="who" style="margin:10px 0 0">📱 Texting ···${esc(poll.my_text)} ${poll.my_text_updates ? 'new notes, when it’s set and the morning of' : 'when someone leaves a note'} · <button class="linkbtn" id="textstop">Stop</button></p>`;
+  if (!phoneOpen) return `<button class="linkbtn" id="textopen" style="margin-top:10px">📱 Text me updates on this plan</button>`;
   const typed = document.getElementById('phone')?.value || '';
   return `<div class="namerow" style="margin-top:10px"><input id="phone" type="tel" maxlength="20" autocomplete="tel" placeholder="Your phone number" value="${esc(typed)}"><button id="textme">Text me</button></div>
-    <p class="who" style="margin:6px 0 0">We’ll text you when someone else leaves a note on this vote. US numbers only. Msg &amp; data rates may apply. Reply STOP to stop.</p>`;
+    <p class="who" style="margin:6px 0 0">We’ll text you when someone else leaves a note, when the plan is set, and the morning of. US numbers only. Msg &amp; data rates may apply. Reply STOP to stop.</p>`;
 }
 function setTexts(phone) {
-  return once(async () => { try { poll = await rpc('set_poll_text', { p_code: code, p_voter_key: me, p_phone: phone }); phoneOpen = false; lastWrite = Date.now(); render(); }
+  return once(async () => { try { poll = await rpc('set_poll_text', { p_code: code, p_voter_key: me, p_phone: phone, p_updates: !!phone }); phoneOpen = false; lastWrite = Date.now(); render(); }
   catch (e) { alert(/could not find the function/i.test(e.message) ? 'Texts aren’t switched on yet.' : /US phone/.test(e.message) ? 'Enter a US phone number.' : /today/.test(e.message) ? 'That’s a lot of numbers today. Try again tomorrow.' : /too many numbers/.test(e.message) ? 'This vote has too many numbers already.' : "Couldn't save that. Try again."); } });
 }
 async function postNote() {
