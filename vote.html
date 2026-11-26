@@ -1368,12 +1368,22 @@ const fabOn = () => !!poll && poll.can_add && !poll.final && !poll.closed && (po
 function stopHtml() {
   const parts = poll.parts || [];
   if (!poll.can_add || poll.final || poll.closed || parts.length >= 6) return '';
-  if (!stopOpen && !(adding && isStop(addPart))) return `<button class="suggest" id="stopopen">＋ Add a stop before or after${parts.length ? '' : ' (make it a day or night)'}</button>`;
-  const btn = (w, label) => `<button class="chip ${adding && addPart === w ? 'on' : ''}" data-suggest="${w}" aria-pressed="${adding && addPart === w}">${adding && addPart === w ? 'Done' : label}</button>`;
-  return `<div class="box" id="step-addstop"><h2>${parts.length ? 'Add to the plan' : 'Make a day or night of it'}</h2>
-    <div class="m">Suggest something to do first or after: a place, or your own like a walk in the park${parts.length ? '' : '. The vote becomes a plan with a stop before or after'}.</div>
-    <div class="chips" style="margin-top:8px">${btn('before', '⬆️ Before')}${btn('after', '⬇️ After')}</div>
-    ${adding && isStop(addPart) ? ('part_times' in poll ? ownHtml(true) : '') + picksHtml() : ''}</div>`;
+  if (!stopOpen && !(adding && isStop(addPart))) return `<button class="suggest" id="stopopen">＋ Add something to the plan (before or after)</button>`;
+  // Two plain steps: 1. when (before the first stop, or after the last), 2. what
+  // (a place from the list, or your own). Tapping the picked "when" again cancels.
+  const first = parts[0], last = parts[parts.length - 1];
+  const at = p => (p && p.time ? t12(p.time) : null);
+  const pick = isStop(addPart) && adding ? addPart : null;
+  const when = (w, icon, title, sub) => `<button class="opt ${pick === w ? 'mine' : ''}" data-suggest="${w}" aria-pressed="${pick === w}" style="margin-bottom:8px">
+      <span class="row"><span class="grow"><div class="t">${pick === w ? '✓ ' : icon + ' '}${esc(title)}</div><div class="m">${esc(sub)}</div></span></span></button>`;
+  return `<div class="box" id="step-addstop"><h2>＋ Add something to the plan</h2>
+    <div class="m" style="margin-bottom:10px">Friends see it in the plan and can vote on it.</div>
+    <div class="who" style="margin:0 0 6px;font-weight:800">1. When?</div>
+    ${when('before', '⬆️', at(first) ? `Before ${at(first)}` : 'Before', 'Something to do first')}
+    ${when('after', '⬇️', at(last) ? `After ${at(last)}` : 'After', 'Something to do after')}
+    ${pick ? `<div class="who" style="margin:12px 0 6px;font-weight:800">2. What? Pick a place below, or add your own</div>
+      ${'part_times' in poll ? ownHtml(true) : ''}${picksHtml()}
+      <button class="linkbtn" data-suggest="${pick}" style="margin-top:8px">Cancel</button>` : ''}</div>`;
 }
 function addStop(id, where, own = null, at = null, onDate = null) {
   return once(async () => { try {
