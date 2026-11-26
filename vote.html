@@ -130,6 +130,8 @@
   .tixrow a { color:#c2410c; font-weight:800; text-decoration:none; }
   .dayplan { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:-2px 0 12px; padding:0 4px; }
   .autoline { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:0 0 8px; padding:8px 12px; border-radius:12px; background:#fff1e6; font-weight:700; font-size:15px; text-align:left; }
+  .lockbox { margin:0 0 14px; text-align:left; }
+  .lockbtn { display:block; width:100%; font:inherit; font-size:17px; font-weight:800; color:#fff; background:var(--ink); border:0; border-radius:14px; padding:14px; cursor:pointer; }
   .newbar { display:block; margin:0 0 10px; padding:10px 12px; border-radius:12px; background:#fff1e6; color:#9a3412; font-weight:800; text-decoration:none; text-align:left; }
   .actrow { display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-top:1px solid var(--line); font-size:15px; text-align:left; }
   .actrow.new span:first-child { font-weight:800; } .actrow.new span:first-child::after { content:' · New'; color:#c2410c; }
@@ -388,20 +390,21 @@ function render() {
       <div class="namerow"><input id="name" maxlength="30" autocomplete="given-name" placeholder="Your first name" value="${esc(savedName)}"><button id="savename">Save</button></div></div>`
       : !poll.closed && savedName ? `<p class="voting-as">Voting as <b>${esc(savedName)}</b> · <button id="chname">Change</button></p>` : ''}
     ${parted ? nightHtml(final ? final.parts : partWin, people, !!final, pastDay) : ''}
+    ${isOrg() && !final && !poll.closed && poll.options.length ? `<div class="lockbox"><button class="lockbtn" id="lockin">🔒 Lock it in</button><div class="who" style="margin:6px 0 0">When the group has decided: makes it the final plan (the winning place at each time, and the day and times most can make), stops the voting and tells everyone.</div></div>` : ''}
     ${parted && rsvpShown ? rsvpHtml(final, fullyClosed) : ''}
     ${stepsHtml(sections, mine, final, invite, parted, rsvpShown)}
     ${parted && !final && !poll.closed ? '<h2 class="sec">Help shape it</h2>' : ''}
     ${final ? finalHtml(final) : !invite && !parted ? summaryHtml(sections, partWin, win, lead, mine, people) : ''}
     ${!parted && !invite ? '<div id="step-vote"></div>' : ''}
     ${parted && Array.isArray(poll.times) && !final && !poll.closed && !multiDay() ? dayVoteHtml() : ''}
-    ${parted && poll.is_creator && !final && !poll.closed ? `<button class="edittoggle ${editing ? 'on' : ''}" id="edittoggle" aria-expanded="${editing}"><b>${editing ? '✓ Done changing' : '✏️ Change the stops'}</b><span>${editing ? 'Tap ↔ under a place to move it to another time, or ✕ by a time to take that stop out' : 'Only you: move a place to another time, or take a stop out'}</span></button>` : ''}
+    ${parted && isOrg() && !final && !poll.closed ? `<button class="edittoggle ${editing ? 'on' : ''}" id="edittoggle" aria-expanded="${editing}"><b>${editing ? '✓ Done changing' : '✏️ Change the stops'}</b><span>${editing ? 'Tap ↔ under a place to move it to another time, or ✕ by a time to take that stop out' : 'Only you: move a place to another time, or take a stop out'}</span></button>` : ''}
     ${sections.map(({ p, pi, idxs }) => {
       // A plan ("Dinner → Drinks"): each part has its own places and winner.
       const w = p ? partWin[pi] : win, secTop = Math.max(0, ...idxs.map(i => poll.counts[i] || 0));
       const fixed = !!p && idxs.length === 1;
       const hop = p && pi > 0 && partDay(poll.parts[pi - 1]) === partDay(p) ? hopText(poll.options.filter(o => o.part === pi - 1), poll.options.filter(o => o.part === pi)) : null;
       const dhead = (hop ? `<div class="hopbetween">${esc(hop)}</div>` : '') + (p && showDays() && (pi === 0 || partDay(poll.parts[pi - 1]) !== partDay(p)) ? `<h3 class="dayhead">📅 ${esc(longDay(partDay(p)))}${partDay(p) >= isoDay(utahNow()) ? weatherHtml(partDay(p)) : ''}</h3>` : '');
-      const head = dhead + (p ? `<div class="part-head" id="step-part-${pi}"><span class="pnum">${pi + 1}</span><span class="pname">${p.time ? esc(t12(p.time)) : esc(p.name)}</span>${editing && p && poll.is_creator && !final && !poll.closed && poll.parts.length > 1 ? `<button class="rmstop" data-rmstop="${pi}" aria-label="Remove this stop">✕</button>` : ''}<span class="pstate">${final ? '✅ Set' : fixed ? (poll.options[idxs[0]].added_by ? `💡 From ${esc(poll.options[idxs[0]].added_by)}` : '') : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span></div>${'part_times' in poll && !final && !poll.closed ? partTimesHtml(pi, p) : ''}` : '');
+      const head = dhead + (p ? `<div class="part-head" id="step-part-${pi}"><span class="pnum">${pi + 1}</span><span class="pname">${p.time ? esc(t12(p.time)) : esc(p.name)}</span>${editing && p && isOrg() && !final && !poll.closed && poll.parts.length > 1 ? `<button class="rmstop" data-rmstop="${pi}" aria-label="Remove this stop">✕</button>` : ''}<span class="pstate">${final ? '✅ Set' : fixed ? (poll.options[idxs[0]].added_by ? `💡 From ${esc(poll.options[idxs[0]].added_by)}` : '') : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span></div>${'part_times' in poll && !final && !poll.closed ? partTimesHtml(pi, p) : ''}` : '');
       const opts = idxs.map(i => {
         const o = poll.options[i];
         const n = poll.counts[i] || 0, pct = people && !fixed ? Math.min(100, Math.round(n / people * 100)) : 0;
@@ -421,7 +424,7 @@ function render() {
           ${o.added_by ? `<div class="who">Suggested by ${esc(o.added_by)}${fixed && !final ? '. It’s in the plan unless the organizer removes it. Want something else? Suggest another option.' : ''}</div>` : ''}
           ${names ? `<div class="who">${names}</div>` : ''}
         </span>${invite || fixed ? '' : `<span class="n">${n}${mine.includes(i) ? ' ✓' : ''}</span>`}</span>
-      </button>${more(o, i)}${editing && p && poll.is_creator && !final && !poll.closed ? moveHtml(o, i, pi, p) : ''}`;
+      </button>${more(o, i)}${editing && p && isOrg() && !final && !poll.closed ? moveHtml(o, i, pi, p) : ''}`;
       }).join('');
       const open = adding && addPart === pi;
       const sug = poll.can_add && !final && (!p || idxs.length < 6)
@@ -485,6 +488,8 @@ function render() {
   app.querySelectorAll('[data-planday]').forEach(b => b.addEventListener('click', () => { openAdd(b.dataset.planday); document.getElementById('step-addstop')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }));
   app.querySelectorAll('[data-bringfrom]').forEach(b => b.addEventListener('click', () => { const [f, t] = b.dataset.bringfrom.split('|'); bringOver(f, t); }));
   document.getElementById('stopopen')?.addEventListener('click', () => openAdd());
+  document.getElementById('lockin')?.addEventListener('click', lockIn);
+  document.getElementById('unlockbtn')?.addEventListener('click', unlock);
   app.querySelectorAll('[data-ticket]').forEach(b => b.addEventListener('click', () => toggleTicket(b.dataset.ticket)));
   document.getElementById('actmore')?.addEventListener('click', () => { actAll = !actAll; render(); });
   document.getElementById('stopclose')?.addEventListener('click', () => { stopOpen = false; adding = false; addPart = null; addDay = null; render(); });
@@ -539,7 +544,7 @@ function standFooter() {
   const dayOpenAlt = altDays() && (() => { const c = poll.time_counts || [], top = Math.max(0, ...c); return !top || c.filter(x => x === top).length > 1; })();
   const msg = dayOpenAlt ? `Still open: the day${open ? ` and ${open} stop${open === 1 ? '' : 's'}` : ''}. Tick the days that work for you.`
     : open ? `Still open: ${open} stop${open === 1 ? '' : 's'}. Vote or suggest to settle ${open === 1 ? 'it' : 'them'}.`
-    : poll.is_creator ? 'Every stop has a pick. Lock it in from the near.by app.' : 'Every stop has a pick. The organizer locks it in.';
+    : isOrg() ? 'Every stop has a pick. Lock it in below when the group has decided.' : 'Every stop has a pick. The organizers lock it in.';
   return `<div class="standfoot ${open || dayOpenAlt ? 'open' : 'ok'}">${dayLine ? `<div>${esc(dayLine)}</div>` : ''}<div>${esc(msg)}</div></div>`;
 }
 // A plan's night: each part's time and the place in the lead, with directions.
@@ -1837,7 +1842,8 @@ function peopleHtml() {
   const faces = names.slice(0, 6).map((n, i) => `<span class="face" style="background:${FACE_COLORS[(n.charCodeAt(0) + i) % FACE_COLORS.length]}" title="${esc(n)}">${esc(n.charAt(0).toUpperCase())}</span>`).join('');
   const who = names.length === 1 ? names[0] : names.length === 2 ? `${names[0]} and ${names[1]}` : `${names[0]}, ${names[1]} and ${names.length - 2} other${names.length - 2 === 1 ? '' : 's'}`;
   const verb = poll.final ? (names.length === 1 ? 'is on it' : 'are on it') : (names.length === 1 ? 'is planning' : 'are planning');
-  return `<div class="people"><span class="faces">${faces}</span><span class="m">${esc(who)} ${verb}</span></div>`;
+  const orgs = (poll.organizers || []).length ? `<div class="who" style="margin:2px 0 0">⭐ Also organizing: ${esc(poll.organizers.join(', '))}</div>` : '';
+  return `<div class="people"><span class="faces">${faces}</span><span class="m">${esc(who)} ${verb}</span></div>${orgs}`;
 }
 
 // The forecast for the plan's day where it starts, once it's within the
@@ -1888,6 +1894,90 @@ async function toggleTicket(id) {
   return once(async () => { try { poll = await rpc('toggle_poll_ticket', { p_code: code, p_voter_key: me, p_deal_id: id, p_name: myName() }); render(); }
     catch (e) { alert(/could not find the function/i.test(e.message) ? 'Tickets aren’t switched on yet.' : /closed/.test(e.message) ? 'This plan has closed.' : "Couldn't save that. Try again."); } });
 }
+// The person who started it, or a co-organizer they picked (get_poll's is_organizer).
+const isOrg = () => !!(poll && (poll.is_organizer ?? poll.is_creator));
+// Lock it in: for a plan for each day, the day first (its stops stay, the other
+// days' come out); then a place for each stop (the leader, or pick one where
+// it's tied), the times the group picked, and the day.
+async function lockIn() {
+  if (!isOrg() || saving) return;
+  const parts = poll.parts || [];
+  if (parts.length && altDays()) {
+    const days = [...new Set(parts.map(partDay))].sort();
+    const c = poll.time_counts || [], top = Math.max(0, ...c), lead = c.map((x, i) => (x === top && top ? poll.times[i].day : null)).filter(d => d && days.includes(d));
+    const win = await askPick('Which day’s plan?', lead.length === 1 ? `${day(lead[0])} works for the most people. The other day’s stops come out of the plan.` : 'Pick the day to keep. The other day’s stops come out of the plan.',
+      days.map(d => ({ v: d, label: longDay(d), on: lead.length === 1 && d === lead[0] })), 'Keep this day');
+    if (!win) return;
+    const drop = parts.map((q, pi) => (partDay(q) !== win ? pi : -1)).filter(pi => pi >= 0).sort((a, b) => b - a);
+    try { for (const pi of drop) poll = await rpc('remove_poll_stop', { p_code: code, p_creator_key: me, p_part: pi }); }
+    catch { alert("Couldn't take the other day's stops out. Try again."); render(); return; }
+    render();
+    return lockIn();
+  }
+  const final = {};
+  if (parts.length) {
+    final.parts = [];
+    for (let pi = 0; pi < parts.length; pi++) {
+      const idxs = poll.options.map((o, i) => (o.part === pi ? i : -1)).filter(i => i >= 0);
+      const n = i => poll.counts[i] || 0, top = Math.max(0, ...idxs.map(n)), lead = idxs.filter(i => n(i) === top);
+      let pick = lead.length === 1 ? lead[0] : null;
+      if (pick == null) {
+        pick = await askPick(`${parts[pi].time ? t12(parts[pi].time) + ' · ' : ''}${parts[pi].name}`, top ? 'It’s a tie. Pick the one to lock in.' : 'No votes yet. Pick the one to lock in.',
+          (top ? lead : idxs).map(i => ({ v: i, label: placeName(poll.options[i]) })), 'Lock this one in');
+        if (pick == null) return;
+      }
+      final.parts.push(pick);
+    }
+    if ('part_times' in poll) {
+      const t = parts.map((_, pi) => bestPartTime(pi));
+      const moves = parts.map((q, pi) => (t[pi] ? `${t12(q.time)} → ${t12(t[pi])}` : null)).filter(Boolean);
+      if (moves.length) final.times = confirm(`The group picked other times:\n${moves.join('\n')}\nUse those times? (Cancel keeps the plan's times.)`) ? t : parts.map(() => null);
+    }
+  } else {
+    const n = i => poll.counts[i] || 0, top = Math.max(0, ...poll.counts), lead = poll.options.map((_, i) => i).filter(i => n(i) === top);
+    let pick = lead.length === 1 ? lead[0] : await askPick('Which place?', top ? 'It’s a tie. Pick the one to lock in.' : 'No votes yet. Pick the one to lock in.',
+      (top ? lead : poll.options.map((_, i) => i)).map(i => ({ v: i, label: placeName(poll.options[i]) })), 'Lock this one in');
+    if (pick == null) return;
+    final.option = pick;
+  }
+  // The day: one day's plan keeps its day; else the day most people can make (pick if tied), else the plan's.
+  const ds = [...new Set(parts.map(partDay))];
+  if (ds.length === 1 && parts.some(q => q.date) && dayOptions().includes(ds[0])) final.day = ds[0]; // a day kept from a plan for each day
+  else if (!multiDay() && Array.isArray(poll.times) && poll.times.length) {
+    const c = poll.time_counts || [], top = Math.max(0, ...c), lead = c.map((x, i) => (x === top && top ? i : -1)).filter(i => i >= 0);
+    if (lead.length === 1) final.day = poll.times[lead[0]].day;
+    else if (lead.length > 1) { const d = await askPick('Which day?', 'These days are tied. Pick one.', lead.map(i => ({ v: poll.times[i].day, label: longDay(poll.times[i].day) })), 'Use this day'); if (!d) return; final.day = d; }
+  }
+  if (!final.day && poll.plan_day) final.day = poll.plan_day;
+  if (!confirm('Lock it in? Voting stops and everyone is told the plan.')) return;
+  await once(async () => { try { poll = await rpc('lock_poll', { p_code: code, p_creator_key: me, p_final: final }); render(); toast('It’s set · everyone’s been told'); }
+    catch (e) { alert(/only the/.test(e.message) ? 'Only the organizers can lock it in.' : "Couldn't lock it in. Try again."); } });
+}
+async function unlock() {
+  if (!isOrg() || !confirm('Unlock the plan? Friends can vote and suggest again until it’s locked in.')) return;
+  await once(async () => { try { poll = await rpc('lock_poll', { p_code: code, p_creator_key: me, p_final: null }); render(); } catch { alert("Couldn't unlock it. Try again."); } });
+}
+// A small sheet to pick one of a few (a day, or a place where it's tied).
+function askPick(title, msg, rows, okLabel) {
+  return new Promise(resolve => {
+    const box = document.createElement('div');
+    box.className = 'askname';
+    let sel = (rows.find(r => r.on) || {}).v ?? null;
+    const done = v => { box.remove(); resolve(v); };
+    const draw = () => {
+      box.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="pick-t"><div class="t" id="pick-t">${esc(title)}</div><div class="m">${esc(msg)}</div>
+        <div style="margin-top:10px">${rows.map((r, k) => `<button class="opt ${sel === r.v ? 'mine' : ''}" data-k="${k}" style="margin-bottom:6px"><span class="row"><span class="grow"><div class="t">${sel === r.v ? '✓ ' : ''}${esc(r.label)}</div></span></span></button>`).join('')}</div>
+        <button class="downbtn" id="pick-ok" ${sel == null ? 'disabled' : ''}>${esc(okLabel)}</button>
+        <button class="linkbtn" id="pick-no" style="display:block;margin:10px auto 0">Cancel</button></div>`;
+      box.querySelectorAll('[data-k]').forEach(b => b.addEventListener('click', () => { sel = rows[Number(b.dataset.k)].v; draw(); }));
+      box.querySelector('#pick-ok').addEventListener('click', () => done(sel));
+      box.querySelector('#pick-no').addEventListener('click', () => done(null));
+    };
+    box.addEventListener('click', e => { if (e.target === box) done(null); });
+    draw();
+    document.body.appendChild(box);
+  });
+}
 function finalHtml(f) {
   const picks = Array.isArray(f.parts) ? f.parts : [f.option];
   const when = [f.day ? day(f.day) : poll.plan_day ? day(poll.plan_day) : '', f.time ? t12(f.time) : ''].filter(Boolean).join(' · ');
@@ -1901,7 +1991,8 @@ function finalHtml(f) {
   return `<div class="final"><h2>✅ It’s set${when ? ' · ' + esc(when) : ''}</h2>${multiDay() ? [...new Set(poll.parts.map(partDay))].sort().filter(d => d >= isoDay(utahNow())).map(d => weatherHtml(d, false, wday(d))).join('') : fday && fday >= isoDay(utahNow()) ? weatherHtml(fday) : ''}${stops}
     ${(() => { const days = multiDay() ? [...new Set(poll.parts.map(partDay))].sort() : [null];
       return days.map(d => { const l = planCalLinks(d); return l ? `${d ? `<div class="who" style="margin-top:10px">${esc(day(d))}</div>` : ''}<div class="calrow"${d ? ' style="margin-top:4px"' : ''}><a class="calbtn" href="${esc(l.google)}" target="_blank" rel="noopener">📅 Google Calendar</a><a class="calbtn" href="${esc(l.outlook)}" target="_blank" rel="noopener">📅 Outlook</a></div>` : ''; }).join(''); })()}
-    <button class="downbtn" id="ics" style="margin-top:10px">📅 Apple / other calendar</button></div>`;
+    <button class="downbtn" id="ics" style="margin-top:10px">📅 Apple / other calendar</button>
+    ${isOrg() && !poll.closed ? '<button class="linkbtn" id="unlockbtn" style="display:block;margin:12px auto 0">🔓 Unlock to change the plan</button>' : ''}</div>`;
 }
 // Google / Outlook links for the set plan: one entry from the first stop to two
 // hours after the last, every stop in the notes (Utah time; Outlook takes the
