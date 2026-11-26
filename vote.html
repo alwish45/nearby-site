@@ -62,6 +62,11 @@
   .askname { position:fixed; inset:0; background:rgba(20,17,13,.45); display:flex; align-items:flex-end; justify-content:center; z-index:50; }
   .askname .sheet { background:#faf8f4; width:100%; max-width:520px; border-radius:18px 18px 0 0; padding:18px 16px 22px; text-align:left; }
   .askname .t { font-size:19px; font-weight:800; }
+  .whenrow { display:flex; align-items:center; justify-content:center; gap:18px; margin:6px 0 4px; }
+  .whenstep { width:48px; height:48px; border-radius:24px; border:1.5px solid #e2ddd3; background:#fff; font-size:26px; font-weight:800; cursor:pointer; }
+  .whentime { font-size:34px; font-weight:900; color:#e8542a; min-width:140px; text-align:center; letter-spacing:-1px; }
+  .whentime.dim { color:#a39d92; }
+  .toast { position:fixed; left:50%; bottom:24px; transform:translateX(-50%); background:#14110d; color:#fff; font-weight:800; padding:10px 18px; border-radius:999px; z-index:60; font-size:15px; }
   .askname input { margin:12px 0 0; width:100%; box-sizing:border-box; }
   .people { display:flex; align-items:center; gap:8px; margin:-6px 0 12px; text-align:left; }
   .faces { display:flex; flex:none; }
@@ -1193,7 +1198,7 @@ function stopHtml() {
     <div class="chips" style="margin-top:8px">${btn('before', '⬆️ Before')}${btn('after', '⬇️ After')}</div>
     ${adding && isStop(addPart) ? ('part_times' in poll ? ownHtml(true) : '') + picksHtml() : ''}</div>`;
 }
-function addStop(id, where, own = null) {
+function addStop(id, where, own = null, at = null) {
   return once(async () => { try {
     const d = own || (nearby || []).find(x => x.deal_id === id) || {};
     const kinds = poll.options.map(o => stopKind({ ...o, ...((info && info[o.deal_id]) || {}) }));
@@ -1202,8 +1207,8 @@ function addStop(id, where, own = null) {
     // Aim an hour and a half before (two hours after) the plan; if the place is
     // off then, the closest time it's on that's still before (after) it.
     const base = parts.length ? (where === 'before' ? parts[0] : parts[parts.length - 1]).time : slot && slot.time ? String(slot.time).slice(0, 5) : null;
-    let time = null;
-    if (base) {
+    let time = at;
+    if (!at && base) {
       const b0 = mins(base), m = where === 'before' ? (b0 - 90 >= 360 ? b0 - 90 : Math.max(300, b0 - 30)) : Math.min(b0 + 120, 1410);
       time = `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
       const ds = poll.plan_day && poll.plan_day >= planToday() ? poll.plan_day : isoDay(utahNow());
@@ -1212,24 +1217,88 @@ function addStop(id, where, own = null) {
         if (near && (where === 'before' ? mins(near) < mins(base) : mins(near) > mins(base))) time = near;
       }
     }
-    poll = await rpc('add_poll_stop', { p_code: code, p_voter_key: me, p_where: where, p_name: myName(),
+    poll = await rpc('add_poll_stop', { p_code: code, p_voter_key: me, p_where: at ? 'time' : where, p_name: myName(),
       ...(own ? { p_title: own.title, p_place: own.place, p_lat: own.lat, p_lng: own.lng } : { p_deal_id: id }),
       p_stop_name: own ? (OUTDOOR.test(`${own.title} ${own.place || ''}`) ? 'A walk' : own.title.slice(0, 30)) : stopKind(d, time) || (where === 'before' ? 'Before' : 'After'), p_stop_time: time,
       p_main_name: kinds.length && kinds.every(k => k && k === kinds[0]) ? kinds[0] : null,
       p_main_time: slot && slot.time ? String(slot.time).slice(0, 5) : null });
     // The new stop's list stays open, so you can suggest other options for it.
     const n = (poll.parts || []).length;
-    if (n) { addPart = where === 'before' ? 0 : n - 1; stopOpen = false; } else adding = false;
-    clearOwn(); render(); loadInfo(); if (adding) loadNearby(); }
+    if (at) { adding = false; stopOpen = false; }
+    else if (n) { addPart = where === 'before' ? 0 : n - 1; stopOpen = false; } else adding = false;
+    clearOwn(); render(); loadInfo(); if (adding) loadNearby();
+    if (at) toast(`Added at ${t12(at)} · friends can vote on it`); }
   catch (e) { alert(/could not find the function/i.test(e.message) ? 'Adding a stop before or after isn’t switched on yet.' : /\d parts/.test(e.message) ? `This plan already has ${(poll.parts || []).length} stops.` : /full/.test(e.message) ? 'This vote is full.' : /plan is set/.test(e.message) ? 'The plan is set, so it can’t change now.' : "Couldn't add that. Try again."); } });
 }
+// A short note at the bottom ("Added to 7pm").
+function toast(text) {
+  document.querySelector('.toast')?.remove();
+  const t = document.createElement('div'); t.className = 'toast'; t.setAttribute('role', 'status'); t.textContent = text;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 2600);
+}
+// "When for Gracie's?": the same time as one of the plan's stops (another option
+// to vote on), or a time of its own (a new stop, slotted in by its time).
+// Resolves { part }, { vote: true }, { time }, or null (cancelled).
+function askWhen(d) {
+  const parts = poll.parts || [];
+  const st = d.start_time ? String(d.start_time).slice(0, 5) : null;
+  const pad = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+  let part = typeof addPart === 'number' && parts[addPart] ? addPart : !parts.length && !isStop(addPart) ? 'vote' : null;
+  let time = st;
+  if (!time) {
+    const base = parts.length ? (addPart === 'before' ? parts[0] : parts[parts.length - 1]).time : (leadSlot() || {}).time;
+    time = base ? pad(addPart === 'before' ? Math.max(300, mins(base) - 90) : Math.min(mins(base) + 120, 1410)) : '19:00';
+  }
+  if (typeof part === 'number') time = st || String(parts[part].time || time).slice(0, 5);
+  const ds = poll.plan_day && poll.plan_day >= planToday() ? poll.plan_day : isoDay(utahNow());
+  const name = d.business_name || d.title;
+  return new Promise(resolve => {
+    const box = document.createElement('div');
+    box.className = 'askname';
+    const done = v => { box.remove(); resolve(v); };
+    const draw = () => {
+      const joining = part === 'vote' || typeof part === 'number';
+      const shown = typeof part === 'number' ? String(parts[part].time || time).slice(0, 5) : time;
+      const off = part !== 'vote' && d.deal_id && onAt(d, ds, shown) === false;
+      const chips = parts.length
+        ? parts.map((p, j) => `<button class="chip ${part === j ? 'on' : ''}" data-wpart="${j}" aria-pressed="${part === j}">${p.time ? esc(t12(p.time)) + ' · ' : ''}${esc(p.name)}</button>`).join('')
+        : `<button class="chip ${part === 'vote' ? 'on' : ''}" data-wpart="vote" aria-pressed="${part === 'vote'}">With the other options</button>`;
+      box.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="when-t">
+        <div class="t" id="when-t">When for ${esc(name)}?</div>
+        <div class="m">${esc(d.title || '')}${st ? ` · starts ${esc(t12(st))}` : ''}</div>
+        <div class="who" style="margin-top:12px;font-weight:800">${parts.length ? 'Same time as' : 'Add it to the vote'}</div>
+        <div class="chips" style="padding-top:6px">${chips}</div>
+        <div class="who" style="margin-top:14px;font-weight:800">Or its own time${parts.length ? ' (a new stop)' : ' (makes it a plan)'}</div>
+        <div class="whenrow"><button class="whenstep" id="when-dn" aria-label="30 minutes earlier">‹</button><span class="whentime ${joining && part !== 'vote' ? 'dim' : ''}">${esc(t12(joining && part !== 'vote' ? shown : time))}</span><button class="whenstep" id="when-up" aria-label="30 minutes later">›</button></div>
+        ${off ? `<div class="off" style="text-align:center">${esc(name)} may not be open at ${esc(t12(shown))}</div>` : ''}
+        <button class="downbtn" id="when-ok">${part === 'vote' ? 'Add it to the vote' : joining ? `Add as an option at ${esc(t12(shown))}` : `Suggest it at ${esc(t12(time))}`}</button>
+        <button class="linkbtn" id="when-no" style="display:block;margin:10px auto 0">Cancel</button></div>`;
+      box.querySelectorAll('[data-wpart]').forEach(b => b.addEventListener('click', () => { const v = b.dataset.wpart === 'vote' ? 'vote' : Number(b.dataset.wpart); part = part === v ? null : v; draw(); }));
+      const step = n => { const from = typeof part === 'number' ? String(parts[part].time || time).slice(0, 5) : time; time = pad(Math.min(Math.max(mins(from) + n, 300), 1410)); part = null; draw(); };
+      box.querySelector('#when-dn').addEventListener('click', () => step(-30));
+      box.querySelector('#when-up').addEventListener('click', () => step(30));
+      box.querySelector('#when-ok').addEventListener('click', () => done(part === 'vote' ? { vote: true } : typeof part === 'number' ? { part } : { time }));
+      box.querySelector('#when-no').addEventListener('click', () => done(null));
+    };
+    box.addEventListener('click', e => { if (e.target === box) done(null); });
+    box.addEventListener('keydown', e => { if (e.key === 'Escape') done(null); });
+    draw();
+    document.body.appendChild(box);
+    setTimeout(() => box.querySelector('#when-ok')?.focus(), 50);
+  });
+}
 async function addOption(id) {
-  if (isStop(addPart)) return addStop(id, addPart);
+  const d = (nearby || []).find(x => x.deal_id === id) || { deal_id: id, title: '' };
+  const pick = await askWhen(d);
+  if (!pick) return;
+  if (pick.time) return addStop(id, 'after', null, pick.time);
+  const target = pick.vote ? null : pick.part;
   if ((poll.parts || []).length && !(await stopsUnchanged())) return;
   // The list stays open so several places can be added in a row (up to 12 in all).
   return once(async () => { try { const args = { p_code: code, p_voter_key: me, p_deal_id: id, p_name: myName() };
-    if ((poll.parts || []).length) args.p_part = addPart;
-    poll = await rpc('add_poll_option', args); if (!poll.can_add) adding = false; render(); loadInfo(); }
+    if ((poll.parts || []).length) args.p_part = target;
+    poll = await rpc('add_poll_option', args); if (!poll.can_add) adding = false; render(); loadInfo();
+    const at = (poll.parts || [])[target]?.time; toast(at ? `Added to ${t12(at)} · friends can vote on it` : 'Added · friends can vote on it'); }
   catch (e) { alert(/part is full/.test(e.message) ? 'That part already has 6 places.' : /full/.test(e.message) ? 'This vote is full.' : "Couldn't add that. Try again."); } });
 }
 function setHow(how) {
