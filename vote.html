@@ -129,6 +129,7 @@
   .tixrow { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:6px; }
   .tixrow a { color:#c2410c; font-weight:800; text-decoration:none; }
   .dayplan { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:-2px 0 12px; padding:0 4px; }
+  .autoline { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:0 0 8px; padding:8px 12px; border-radius:12px; background:#fff1e6; font-weight:700; font-size:15px; text-align:left; }
   .newbar { display:block; margin:0 0 10px; padding:10px 12px; border-radius:12px; background:#fff1e6; color:#9a3412; font-weight:800; text-decoration:none; text-align:left; }
   .actrow { display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-top:1px solid var(--line); font-size:15px; text-align:left; }
   .actrow.new span:first-child { font-weight:800; } .actrow.new span:first-child::after { content:' · New'; color:#c2410c; }
@@ -469,13 +470,18 @@ function render() {
     const v = b.dataset.suggest;
     const pi = v === '' ? null : v === 'before' || v === 'after' ? v : Number(v);
     // A walk opens on things to do outdoors.
-    if (adding && addPart === pi) adding = false; else { adding = true; addPart = pi; feed.q = ''; feed.cat = typeof pi === 'number' && /walk|park|outdoor/i.test((poll.parts[pi] || {}).name || '') ? 'outdoor' : ''; loadNearby(); }
+    if (adding && addPart === pi) adding = false; else {
+      adding = true; addPart = pi; feed.q = ''; feed.shown = FEED_STEP;
+      const f = typeof pi === 'number' ? stopFilters(pi) : { cat: '', slot: '', label: '' };
+      feed.cat = f.cat; feed.slot = f.slot; feed.auto = f.label && poll.parts[pi] && poll.parts[pi].time ? `${t12(poll.parts[pi].time)}: ${f.label}` : '';
+      loadNearby();
+    }
     render();
   }));
   app.querySelectorAll('[data-how]').forEach(b => b.addEventListener('click', () => setHow(b.dataset.how)));
   bindPartTimes();
   app.querySelectorAll('[data-step]').forEach(b => b.addEventListener('click', () => document.getElementById(`step-${b.dataset.step}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })));
-  const openAdd = (d = null) => { addDay = typeof d === 'string' ? d : null; stopOpen = true; adding = true; addPart = 'any'; feed.q = ''; feed.cat = ''; loadNearby(); render(); };
+  const openAdd = (d = null) => { addDay = typeof d === 'string' ? d : null; stopOpen = true; adding = true; addPart = 'any'; feed.q = ''; feed.cat = ''; feed.slot = ''; feed.auto = ''; loadNearby(); render(); };
   app.querySelectorAll('[data-planday]').forEach(b => b.addEventListener('click', () => { openAdd(b.dataset.planday); document.getElementById('step-addstop')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }));
   app.querySelectorAll('[data-bringfrom]').forEach(b => b.addEventListener('click', () => { const [f, t] = b.dataset.bringfrom.split('|'); bringOver(f, t); }));
   document.getElementById('stopopen')?.addEventListener('click', () => openAdd());
@@ -920,13 +926,15 @@ function anchorFor(pi) {
 }
 // The vote's day when it's later than today ("Thursday?"), else null.
 const futureDay = () => { const ps = (poll && poll.parts) || [], d = addDay && adding ? addDay : typeof addPart === 'number' && ps[addPart] ? partDay(ps[addPart]) : isStop(addPart) && ps.length ? partDay(addPart === 'before' ? ps[0] : ps[ps.length - 1]) : poll && poll.plan_day; return d && d > isoDay(utahNow()) ? d : null; };
+let nearbyKey = '';
 async function loadNearby() {
   if (!poll) return;
   const at = anchorFor(addPart);
   if (!at) { nearby = []; nearbyAt = null; return; }
-  const key = `${at.lat},${at.lng}`;
-  if (nearbyAt && `${nearbyAt.lat},${nearbyAt.lng}` === key && nearby) return;
-  nearbyAt = at;
+  // Kept by place and day: Saturday's list isn't Friday's.
+  const key = `${at.lat},${at.lng},${futureDay() || ''}`;
+  if (nearbyAt && nearbyKey === key && nearby) return;
+  nearbyAt = at; nearbyKey = key;
   if (nearbyCache[key]) { nearby = nearbyCache[key]; render(); return; }
   nearby = null;
   try {
@@ -967,7 +975,9 @@ function goodPick(d) {
   if (HEALTH_TEXT.test(`${d.title || ''} ${d.business_name || ''}`)) return false;
   if (CATERING_TEXT.test(d.title || '') || CATERING_DESC.test(d.description || '')) return false;
   // Already over for today. An end time at or before the start (10pm to 1am) runs past midnight, so it isn't over.
-  if (d.end_time && !futureDay()) {
+  const fd = futureDay();
+  if (fd && (d.valid_from || d.valid_until || (d.recurring_days || []).length) && !runsOnDate(d, dateAt(fd, '12:00'))) return false;
+  if (d.end_time && !fd) {
     const now = utahNow(), end = mins(d.end_time), start = d.start_time ? mins(d.start_time) : null;
     const pastMidnight = start != null ? end <= start : end < 300;
     if (!pastMidnight && now.getHours() * 60 + now.getMinutes() > end) return false;
@@ -985,7 +995,22 @@ const MILES = [[0, 'Any distance'], [1, 'Under 1 mi'], [3, 'Under 3 mi'], [5, 'U
 const SLOTS = [['', 'Any time'], ['morning', 'Morning'], ['lunch', 'Lunch'], ['afternoon', 'Afternoon'], ['evening', 'Evening'], ['late', 'Late night']];
 const SLOT_RANGE = { morning: [300, 660], lunch: [660, 840], afternoon: [840, 1020], evening: [1020, 1260], late: [1260, 1560] };
 const FEED_STEP = 12;
-const feed = { q: '', cat: '', mi: 0, slot: '', free: false, under: 0, shown: FEED_STEP };
+const feed = { q: '', cat: '', mi: 0, slot: '', free: false, under: 0, shown: FEED_STEP, auto: '' };
+// The filters a stop starts with: what kind of stop it is (by its name, else its
+// places) and its time of day. "Lunch" as a time needs food, so other kinds
+// around midday get Afternoon.
+function stopFilters(pi) {
+  const p = (poll.parts || [])[pi] || {}, n = String(p.name || '').toLowerCase();
+  const opts = poll.options.filter(o => o.part === pi), cats = opts.map(o => String(o.category || '').toLowerCase());
+  let cat = /walk|park|hike|trail|outdoor|picnic/.test(n) ? 'outdoor' : /brunch|breakfast|coffee/.test(n) ? 'brunch' : /happy/.test(n) ? 'happy hour'
+    : /drink|bar\b|late/.test(n) ? 'drinks' : /show|music|concert/.test(n) ? 'music' : /comedy/.test(n) ? 'comedy' : /trivia/.test(n) ? 'trivia'
+    : /lunch|dinner|dessert|meal|eat|food/.test(n) ? 'food' : '';
+  if (!cat && cats.length && cats.every(c => /restaurant|cafe|bakery|food/.test(c))) cat = 'food';
+  if (!cat && cats.length && cats.every(c => /bar|pub|brewery|winery|distillery/.test(c))) cat = 'drinks';
+  const m = p.time ? mins(p.time) : null;
+  const slot = m == null ? '' : m < 660 ? 'morning' : m < 840 ? (cat === 'food' ? 'lunch' : 'afternoon') : m < 1020 ? 'afternoon' : m < 1260 ? 'evening' : 'late';
+  return { cat, slot, label: [slot ? SLOTS.find(x => x[0] === slot)[1] : '', cat ? (PICK_CATS.find(x => x[0] === cat) || [])[1] : ''].filter(Boolean).join(' · ') };
+}
 const tagsOf = d => (d.category_tags || []).map(t => String(t).toLowerCase());
 // Free and outdoors, the same rules as the app (deal-finder-v2 lib/config.js isFree / isOutdoors).
 const FREE_PRICE = /^\s*(free( (admission|entry|event|show|concert|pool|to (play|attend|watch|enter)|and open to (the|all)( public)?))?|no cover( charge)?)\s*[.!]?\s*$/i;
@@ -1095,7 +1120,8 @@ function picksHtml() {
   if (!feedPool().length) return '<p class="sub">Nothing else on nearby right now. In the near.by app you can search any area.</p>';
   const from = nearbyAt ? (nearbyAt.own ? nearbyAt.title : nearbyAt.business || nearbyAt.title) : '';
   const dayNote = `<p class="who" style="margin:0 0 8px">${futureDay() ? `What’s on ${esc(day(futureDay()))}` : 'What’s on'}${from ? `, closer to ${esc(from)} (distances from there)` : ''}.</p>`;
-  return `<div class="feed">${dayNote}<input id="find" type="search" maxlength="40" autocomplete="off" placeholder="Search places, food, events…" value="${esc(feed.q)}"><div id="feedbody">${feedBody()}</div></div>`;
+  const autoLn = feed.auto && (feed.cat || feed.slot) ? `<div class="autoline"><span>Picked for ${esc(feed.auto)}</span><button class="linkbtn" id="feedclear">Show everything</button></div>` : '';
+  return `<div class="feed">${dayNote}${autoLn}<input id="find" type="search" maxlength="40" autocomplete="off" placeholder="Search places, food, events…" value="${esc(feed.q)}"><div id="feedbody">${feedBody()}</div></div>`;
 }
 // Typing redraws just the chips and cards, so the search box keeps focus.
 function bindFeed() {
@@ -1106,6 +1132,7 @@ function bindFeed() {
   body.querySelectorAll('[data-mi]').forEach(b => b.addEventListener('click', () => { feed.mi = Number(b.dataset.mi); feed.shown = FEED_STEP; redrawFeed(); }));
   body.querySelectorAll('[data-slot]').forEach(b => b.addEventListener('click', () => { feed.slot = b.dataset.slot; feed.shown = FEED_STEP; redrawFeed(); }));
   document.getElementById('feedmore')?.addEventListener('click', () => { feed.shown += FEED_STEP; redrawFeed(); });
+  document.getElementById('feedclear')?.addEventListener('click', () => { feed.cat = ''; feed.slot = ''; feed.auto = ''; feed.shown = FEED_STEP; document.querySelector('.autoline')?.remove(); redrawFeed(); });
   body.querySelectorAll('[data-under]').forEach(b => b.addEventListener('click', () => { const n = Number(b.dataset.under); feed.under = feed.under === n ? 0 : n; feed.shown = FEED_STEP; redrawFeed(); }));
 }
 function redrawFeed() {
@@ -1600,7 +1627,7 @@ function askWhen(d) {
     const draw = () => {
       const joining = part === 'vote' || typeof part === 'number';
       const shown = typeof part === 'number' ? String(parts[part].time || time).slice(0, 5) : time;
-      const off = part !== 'vote' && d.deal_id && onAt(d, ds, shown) === false;
+      const off = part !== 'vote' && d.deal_id && onAt(d, onDate || ds, shown) === false;
       const near = parts.map((p, j) => [p, j]).filter(([p]) => !addDay || partDay(p) === onDate);
       const chips = parts.length
         ? near.map(([p, j]) => `<button class="chip ${part === j ? 'on' : ''}" data-wpart="${j}" aria-pressed="${part === j}">${showDays() ? esc(wday(partDay(p))) + ' ' : ''}${p.time ? esc(t12(p.time)) + ' · ' : ''}${esc(p.name)}</button>`).join('')
