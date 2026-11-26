@@ -365,10 +365,10 @@ function render() {
     ${peopleHtml()}
     ${poll.is_creator && !poll.closed && !poll.final ? '<button class="downbtn" id="invitemore" style="margin:4px 0 12px">📣 Send the link to friends</button>' : ''}
     <p class="sub">${invite
-      ? (poll.closed ? 'This invite has closed.' : 'Tap “I’m down” if you’re in. No app needed.')
+      ? (poll.closed ? 'This invite has closed.' : rsvpShown ? 'Tap “I’m in” if you’re coming. No app needed.' : 'Tap “I’m down” if you’re in. No app needed.')
       : `${poll.closed ? 'This vote has closed.' : final ? 'The plan is set. Say if you’re in below.' : (poll.parts || []).length ? 'Tick the times you can make and vote on places. No app needed.' : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
     ${pastDay ? `<p class="off" style="text-align:left">This was for ${esc(day(planDayOf()))}.</p>` : ''}
-    ${!poll.closed && !final && poll.closes_at ? `<p class="who" style="text-align:left;margin:-4px 0 8px">Voting closes ${esc(new Date(poll.closes_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Denver' }))}</p>` : ''}
+    ${!poll.closed && !final && poll.closes_at && !(planDayOf() && isoDay(new Date(new Date(poll.closes_at).toLocaleString('en-US', { timeZone: 'America/Denver' }))) > planDayOf()) ? `<p class="who" style="text-align:left;margin:-4px 0 8px">Voting closes ${esc(new Date(poll.closes_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Denver' }))}</p>` : ''}
     ${askName ? `<div class="namecard"><div class="t">👋 What’s your name?</div><div class="m">So your friends know who voted and who’s in.</div>
       <div class="namerow"><input id="name" maxlength="30" autocomplete="given-name" placeholder="Your first name" value="${esc(savedName)}"><button id="savename">Save</button></div></div>`
       : !poll.closed && savedName ? `<p class="voting-as">Voting as <b>${esc(savedName)}</b> · <button id="chname">Change</button></p>` : ''}
@@ -498,9 +498,12 @@ function nightHtml(winners, people, locked = false, pastDay = false) {
     const hop = prev && prev.lat && o && o.lat ? miles(prev, o) : null;
     const hopLine = hop == null ? '' : `<div class="hop" ${hop > 5 ? 'style="color:#b4441c"' : ''}>↓ ${hop < 0.1 ? 'next door' : hop.toFixed(1) + ' mi'} · ~${Math.max(1, Math.round(hop <= 0.8 ? hop * 20 : hop * 2.5 + 3))} min ${hop <= 0.8 ? 'walk' : 'drive'}${hop > 5 ? ' · far apart' : ''}</div>`;
     const near = off ? nearestOn(t, pd, p.time) : null;
+    // Today, and the time's gone by (a 9am stop on a plan sent at noon).
+    const now = utahNow(), gone = !locked && !pastDay && pd === isoDay(now) && p.time && mins(p.time) < now.getHours() * 60 + now.getMinutes();
     return `${hopLine}<div class="night-row"><span class="ntime">${multiDay() ? esc(wday(pd)) + '<br>' : ''}${p.time ? esc(t12(p.time)) : '—'}</span><span class="grow">
       <div class="t">${o ? esc(stopLabel(p, o)) : 'Tied or still voting'}</div>
       ${o && o.own && o.business ? `<div class="who">📍 ${esc(o.business)}</div>` : ''}
+      ${gone ? `<div class="off">⏰ ${esc(t12(p.time))} has already passed today</div>` : ''}
       ${off ? `<div class="off">⚠️ Not on at ${esc(t12(p.time))} (${esc(whyOff(t, pd))})${near ? `. Closest: ${esc(t12(near))}` : ''}</div>` : ''}
       ${o && o.own ? (ownMap(o) ? `<a href="${ownMap(o)}" target="_blank" rel="noopener">Directions ›</a>` : '') : o && o.lat ? `<a href="${gmaps(o)}" target="_blank" rel="noopener">Directions ›</a>` : ''}
     </span></div>`;
@@ -510,7 +513,7 @@ function nightHtml(winners, people, locked = false, pastDay = false) {
   const dayPlan = poll.parts.some(p => p.time && String(p.time).slice(0, 5) < '16:00');
   return `<div class="box"><h2>${multiDay() ? '🗓️ The plan · ' + esc(day(partDay(poll.parts[0]))) + ' – ' + esc(day(partDay(poll.parts[poll.parts.length - 1]))) : `${dayPlan ? '☀️ Your day' : '🌃 Your night'} · ${pastDay ? 'was ' + esc(day(pday)) : pday === today ? (dayPlan ? 'Today' : 'Tonight') : esc(day(pday))}`}${locked ? ' · set' : ''}</h2>${multiDay() ? [...new Set(poll.parts.map(partDay))].sort().filter(d => d >= today).map(d => weatherHtml(d, false, wday(d))).join('') : pastDay ? '' : weatherHtml(pday, dayPlan)}${rows}
     ${route ? `<div style="text-align:left;margin-top:8px"><a href="${route}" target="_blank" rel="noopener" style="color:#c2410c;font-weight:700;text-decoration:none">🗺️ The whole route in Maps ›</a></div>` : ''}
-    ${locked ? '' : `<div class="who" style="margin-top:6px">${winners.every(w => w >= 0) ? 'Every stop has a favourite. The organizer locks it in.' : 'The top place at each stop shows here as friends vote.'}</div>`}</div>`;
+    ${locked || poll.parts.every((_, pi) => poll.options.filter(o => o.part === pi).length <= 1) ? '' : `<div class="who" style="margin-top:6px">${winners.every(w => w >= 0) ? 'Every stop has a favourite. The organizer locks it in.' : 'The top place at each stop shows here as friends vote.'}</div>`}</div>`;
 }
 
 // When works? Friends tap every day and time they can make, or suggest another.
