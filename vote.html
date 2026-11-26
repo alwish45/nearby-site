@@ -62,6 +62,7 @@
   .askname { position:fixed; inset:0; background:rgba(20,17,13,.45); display:flex; align-items:flex-end; justify-content:center; z-index:50; }
   .askname .sheet { background:#faf8f4; width:100%; max-width:520px; border-radius:18px 18px 0 0; padding:18px 16px 22px; text-align:left; }
   .askname .t { font-size:19px; font-weight:800; }
+  .dayhead { font-size:17px; font-weight:900; margin:14px 0 6px; text-align:left; }
   .calrow { display:flex; gap:8px; margin-top:12px; }
   .calbtn { flex:1; text-align:center; border:1.5px solid #e2ddd3; background:#fff; border-radius:12px; padding:11px 6px; font-weight:800; color:#14110d; text-decoration:none; font-size:15px; }
   .whenrow { display:flex; align-items:center; justify-content:center; gap:18px; margin:6px 0 4px; }
@@ -296,12 +297,13 @@ function render() {
     ${stepsHtml(sections, mine, final, invite, parted, rsvpShown)}
     ${final ? finalHtml(final) : !invite && !(parted && sections.every(x => x.idxs.length === 1)) ? summaryHtml(sections, partWin, win, lead, mine, people) : ''}
     ${!parted && !invite ? '<div id="step-vote"></div>' : ''}
-    ${parted && Array.isArray(poll.times) && !final && !poll.closed ? dayVoteHtml() : ''}
+    ${parted && Array.isArray(poll.times) && !final && !poll.closed && !multiDay() ? dayVoteHtml() : ''}
     ${sections.map(({ p, pi, idxs }) => {
       // A plan ("Dinner → Drinks"): each part has its own places and winner.
       const w = p ? partWin[pi] : win, secTop = Math.max(0, ...idxs.map(i => poll.counts[i] || 0));
       const fixed = !!p && idxs.length === 1;
-      const head = p ? `<div class="part-head" id="step-part-${pi}"><span class="pnum">${pi + 1}</span><span class="pname">${esc(p.name)}${p.time ? ` · ${esc(t12(p.time))}` : ''}</span><span class="pstate">${final ? '✅ Set' : fixed ? (poll.options[idxs[0]].added_by ? `💡 From ${esc(poll.options[idxs[0]].added_by)}` : '📌 Set') : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span></div>${'part_times' in poll && !final && !poll.closed ? partTimesHtml(pi, p) : ''}` : '';
+      const dhead = p && multiDay() && (pi === 0 || partDay(poll.parts[pi - 1]) !== partDay(p)) ? `<h3 class="dayhead">📅 ${esc(day(partDay(p)))}</h3>` : '';
+      const head = dhead + (p ? `<div class="part-head" id="step-part-${pi}"><span class="pnum">${pi + 1}</span><span class="pname">${esc(p.name)}${p.time ? ` · ${esc(t12(p.time))}` : ''}</span><span class="pstate">${final ? '✅ Set' : fixed ? (poll.options[idxs[0]].added_by ? `💡 From ${esc(poll.options[idxs[0]].added_by)}` : '📌 Set') : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span></div>${'part_times' in poll && !final && !poll.closed ? partTimesHtml(pi, p) : ''}` : '');
       const opts = idxs.map(i => {
         const o = poll.options[i];
         const n = poll.counts[i] || 0, pct = people && !fixed ? Math.min(100, Math.round(n / people * 100)) : 0;
@@ -309,7 +311,7 @@ function render() {
         const when = [o.valid_from && o.valid_from > isoDay(utahNow()) ? day(o.valid_from) : '', o.start_time ? t12(o.start_time) : ''].filter(Boolean).join(' ');
         const img = /^https:\/\//.test(o.image_url || '') ? `<img class="thumb" src="${esc(o.image_url)}" alt="" loading="lazy" onerror="this.remove()">` : '';
         const deal = o.price_info && !/^\s*tickets\s*$/i.test(o.price_info) ? `<span class="deal">${esc(o.price_info)}</span>` : '';
-        const fit = p && p.time && !pastDay && !o.own ? onAt(timed(o), pday, p.time) : null;
+        const fit = p && p.time && !pastDay && !o.own ? onAt(timed(o), partDay(p), p.time) : null;
         const isFinal = finalIdx.includes(i);
         const fitLn = fit === false ? `<div class="off">❌ Not on at ${esc(t12(p.time))} (${esc(whyOff(timed(o), pday))})</div>` : fit === true && !fixed ? `<div class="on">✅ On at ${esc(t12(p.time))}</div>` : '';
         return `<button class="opt ${mine.includes(i) ? 'mine' : ''} ${isFinal ? 'final-pick' : final ? 'dim' : ''}" data-i="${i}" ${poll.closed || invite || fixed || final ? 'disabled' : ''} aria-pressed="${mine.includes(i)}">
@@ -395,22 +397,23 @@ function nightHtml(winners, people, locked = false, pastDay = false) {
     const h = Math.sin(dLat / 2) ** 2 + Math.cos(r(a.lat)) * Math.cos(r(b.lat)) * Math.sin(dLng / 2) ** 2; return 7917.5 * Math.asin(Math.sqrt(h)); };
   const rows = poll.parts.map((p, pi) => {
     const w = winners[pi], o = w >= 0 ? poll.options[w] : null, t = o ? timed(o) : null;
-    const off = !pastDay && t && p.time && onAt(t, pday, p.time) === false;
+    const pd = partDay(p);
+    const off = !pastDay && t && p.time && onAt(t, pd, p.time) === false;
     const prev = pi > 0 ? stops[pi - 1] : null;
     const hop = prev && prev.lat && o && o.lat ? miles(prev, o) : null;
     const hopLine = hop == null ? '' : `<div class="hop" ${hop > 5 ? 'style="color:#b4441c"' : ''}>↓ ${hop < 0.1 ? 'next door' : hop.toFixed(1) + ' mi'} · ~${Math.max(1, Math.round(hop <= 0.8 ? hop * 20 : hop * 2.5 + 3))} min ${hop <= 0.8 ? 'walk' : 'drive'}${hop > 5 ? ' · far apart' : ''}</div>`;
-    const near = off ? nearestOn(t, pday, p.time) : null;
-    return `${hopLine}<div class="night-row"><span class="ntime">${p.time ? esc(t12(p.time)) : '—'}</span><span class="grow">
+    const near = off ? nearestOn(t, pd, p.time) : null;
+    return `${hopLine}<div class="night-row"><span class="ntime">${multiDay() ? esc(wday(pd)) + '<br>' : ''}${p.time ? esc(t12(p.time)) : '—'}</span><span class="grow">
       <div class="t">${o ? esc(stopLabel(p, o)) : `${esc(p.name)}: tied or still voting`}</div>
       ${o && o.own && o.business ? `<div class="who">📍 ${esc(o.business)}</div>` : ''}
-      ${off ? `<div class="off">⚠️ Not on at ${esc(t12(p.time))} (${esc(whyOff(t, pday))})${near ? `. Closest: ${esc(t12(near))}` : ''}</div>` : ''}
+      ${off ? `<div class="off">⚠️ Not on at ${esc(t12(p.time))} (${esc(whyOff(t, pd))})${near ? `. Closest: ${esc(t12(near))}` : ''}</div>` : ''}
       ${o && o.own ? (ownMap(o) ? `<a href="${ownMap(o)}" target="_blank" rel="noopener">Directions ›</a>` : '') : o && o.lat ? `<a href="${gmaps(o)}" target="_blank" rel="noopener">Directions ›</a>` : ''}
     </span></div>`;
   }).join('');
   const located = stops.filter(o => o && o.lat);
   const route = located.length >= 2 ? `https://www.google.com/maps/dir/?api=1&origin=${located[0].lat},${located[0].lng}&destination=${located[located.length - 1].lat},${located[located.length - 1].lng}${located.length > 2 ? '&waypoints=' + encodeURIComponent(located.slice(1, -1).map(o => `${o.lat},${o.lng}`).join('|')) : ''}` : '';
   const dayPlan = poll.parts.some(p => p.time && String(p.time).slice(0, 5) < '16:00');
-  return `<div class="box"><h2>${dayPlan ? '☀️ Your day' : '🌃 Your night'} · ${pastDay ? 'was ' + esc(day(pday)) : pday === today ? (dayPlan ? 'Today' : 'Tonight') : esc(day(pday))}${locked ? ' · set' : ''}</h2>${pastDay ? '' : weatherHtml(pday, dayPlan)}${rows}
+  return `<div class="box"><h2>${multiDay() ? '🗓️ Your plans · ' + esc(day(partDay(poll.parts[0]))) + ' – ' + esc(day(partDay(poll.parts[poll.parts.length - 1]))) : `${dayPlan ? '☀️ Your day' : '🌃 Your night'} · ${pastDay ? 'was ' + esc(day(pday)) : pday === today ? (dayPlan ? 'Today' : 'Tonight') : esc(day(pday))}`}${locked ? ' · set' : ''}</h2>${pastDay ? '' : weatherHtml(pday, dayPlan)}${rows}
     ${route ? `<div style="text-align:left;margin-top:8px"><a href="${route}" target="_blank" rel="noopener" style="color:#c2410c;font-weight:700;text-decoration:none">🗺️ The whole route in Maps ›</a></div>` : ''}
     ${locked ? '' : `<div class="who" style="margin-top:6px">${winners.every(w => w >= 0) ? 'Every part has a leader. The person who started it locks in the final plan.' : 'Each part’s leader shows here as friends vote.'}</div>`}</div>`;
 }
@@ -760,7 +763,7 @@ function anchorFor(pi) {
   return (poll.options || []).find(o => o.lat) || null;
 }
 // The vote's day when it's later than today ("Thursday?"), else null.
-const futureDay = () => (poll && poll.plan_day && poll.plan_day > isoDay(utahNow()) ? poll.plan_day : null);
+const futureDay = () => { const ps = (poll && poll.parts) || [], d = typeof addPart === 'number' && ps[addPart] ? partDay(ps[addPart]) : isStop(addPart) && ps.length ? partDay(addPart === 'before' ? ps[0] : ps[ps.length - 1]) : poll && poll.plan_day; return d && d > isoDay(utahNow()) ? d : null; };
 async function loadNearby() {
   if (!poll) return;
   const at = anchorFor(addPart);
@@ -1008,6 +1011,10 @@ function myName() {
 }
 // The day a vote or plan is for: the locked-in day, else the day it was started for.
 const planDayOf = () => (poll && ((poll.final && poll.final.day) || poll.plan_day)) || null;
+// Multi-day plans: a stop's own day, else the plan's; and whether the stops span days.
+const partDay = p => (p && p.date) || planDayOf() || isoDay(utahNow());
+const multiDay = () => new Set(((poll && poll.parts) || []).map(p => p.date).filter(Boolean)).size > 1;
+const wday = d => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short' });
 // Which day? For a plan: tick every day that works; the best one is marked.
 // The same day-and-time votes as When works?, at the first stop's time.
 let dayOpen = false;
@@ -1205,7 +1212,7 @@ function stopHtml() {
     <div class="chips" style="margin-top:8px">${btn('before', '⬆️ Before')}${btn('after', '⬇️ After')}</div>
     ${adding && isStop(addPart) ? ('part_times' in poll ? ownHtml(true) : '') + picksHtml() : ''}</div>`;
 }
-function addStop(id, where, own = null, at = null) {
+function addStop(id, where, own = null, at = null, onDate = null) {
   return once(async () => { try {
     const d = own || (nearby || []).find(x => x.deal_id === id) || {};
     const kinds = poll.options.map(o => stopKind({ ...o, ...((info && info[o.deal_id]) || {}) }));
@@ -1224,7 +1231,7 @@ function addStop(id, where, own = null, at = null) {
         if (near && (where === 'before' ? mins(near) < mins(base) : mins(near) > mins(base))) time = near;
       }
     }
-    poll = await rpc('add_poll_stop', { p_code: code, p_voter_key: me, p_where: at ? 'time' : where, p_name: myName(),
+    poll = await rpc('add_poll_stop', { p_code: code, p_voter_key: me, p_where: at ? 'time' : where, p_name: myName(), ...(onDate && multiDay() ? { p_stop_date: onDate } : {}),
       ...(own ? { p_title: own.title, p_place: own.place, p_lat: own.lat, p_lng: own.lng } : { p_deal_id: id }),
       p_stop_name: own ? (OUTDOOR.test(`${own.title} ${own.place || ''}`) ? 'A walk' : own.title.slice(0, 30)) : stopKind(d, time) || (where === 'before' ? 'Before' : 'After'), p_stop_time: time,
       p_main_name: kinds.length && kinds.every(k => k && k === kinds[0]) ? kinds[0] : null,
@@ -1257,6 +1264,7 @@ function askWhen(d) {
     time = base ? pad(addPart === 'before' ? Math.max(300, mins(base) - 90) : Math.min(mins(base) + 120, 1410)) : '19:00';
   }
   if (typeof part === 'number') time = st || String(parts[part].time || time).slice(0, 5);
+  let onDate = typeof part === 'number' ? partDay(parts[part]) : parts.length ? partDay(addPart === 'before' ? parts[0] : parts[parts.length - 1]) : null;
   const ds = poll.plan_day && poll.plan_day >= planToday() ? poll.plan_day : isoDay(utahNow());
   const name = d.business_name || d.title;
   return new Promise(resolve => {
@@ -1268,7 +1276,7 @@ function askWhen(d) {
       const shown = typeof part === 'number' ? String(parts[part].time || time).slice(0, 5) : time;
       const off = part !== 'vote' && d.deal_id && onAt(d, ds, shown) === false;
       const chips = parts.length
-        ? parts.map((p, j) => `<button class="chip ${part === j ? 'on' : ''}" data-wpart="${j}" aria-pressed="${part === j}">${p.time ? esc(t12(p.time)) + ' · ' : ''}${esc(p.name)}</button>`).join('')
+        ? parts.map((p, j) => `<button class="chip ${part === j ? 'on' : ''}" data-wpart="${j}" aria-pressed="${part === j}">${multiDay() ? esc(wday(partDay(p))) + ' ' : ''}${p.time ? esc(t12(p.time)) + ' · ' : ''}${esc(p.name)}</button>`).join('')
         : `<button class="chip ${part === 'vote' ? 'on' : ''}" data-wpart="vote" aria-pressed="${part === 'vote'}">With the other options</button>`;
       box.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="when-t">
         <div class="t" id="when-t">When for ${esc(name)}?</div>
@@ -1276,6 +1284,7 @@ function askWhen(d) {
         <div class="who" style="margin-top:12px;font-weight:800">${parts.length ? 'Same time as' : 'Add it to the vote'}</div>
         <div class="chips" style="padding-top:6px">${chips}</div>
         <div class="who" style="margin-top:14px;font-weight:800">Or its own time${parts.length ? ' (a new stop)' : ' (makes it a plan)'}</div>
+        ${multiDay() ? `<div class="chips" style="padding-top:2px">${[...new Set(parts.map(partDay))].sort().map(x => `<button class="chip ${!joining && onDate === x ? 'on' : ''}" data-wday="${x}">${esc(day(x))}</button>`).join('')}</div>` : ''}
         <div class="whenrow"><button class="whenstep" id="when-dn" aria-label="30 minutes earlier">‹</button><span class="whentime ${joining && part !== 'vote' ? 'dim' : ''}">${esc(t12(joining && part !== 'vote' ? shown : time))}</span><button class="whenstep" id="when-up" aria-label="30 minutes later">›</button></div>
         ${off ? `<div class="off" style="text-align:center">${esc(name)} may not be open at ${esc(t12(shown))}</div>` : ''}
         <button class="downbtn" id="when-ok">${part === 'vote' ? 'Add it to the vote' : joining ? `Add as an option at ${esc(t12(shown))}` : `Suggest it at ${esc(t12(time))}`}</button>
@@ -1284,7 +1293,8 @@ function askWhen(d) {
       const step = n => { const from = typeof part === 'number' ? String(parts[part].time || time).slice(0, 5) : time; time = pad(Math.min(Math.max(mins(from) + n, 300), 1410)); part = null; draw(); };
       box.querySelector('#when-dn').addEventListener('click', () => step(-30));
       box.querySelector('#when-up').addEventListener('click', () => step(30));
-      box.querySelector('#when-ok').addEventListener('click', () => done(part === 'vote' ? { vote: true } : typeof part === 'number' ? { part } : { time }));
+      box.querySelectorAll('[data-wday]').forEach(b => b.addEventListener('click', () => { onDate = b.dataset.wday; part = null; draw(); }));
+      box.querySelector('#when-ok').addEventListener('click', () => done(part === 'vote' ? { vote: true } : typeof part === 'number' ? { part } : { time, date: onDate }));
       box.querySelector('#when-no').addEventListener('click', () => done(null));
     };
     box.addEventListener('click', e => { if (e.target === box) done(null); });
@@ -1298,7 +1308,7 @@ async function addOption(id) {
   const d = (nearby || []).find(x => x.deal_id === id) || { deal_id: id, title: '' };
   const pick = await askWhen(d);
   if (!pick) return;
-  if (pick.time) return addStop(id, 'after', null, pick.time);
+  if (pick.time) return addStop(id, 'after', null, pick.time, pick.date);
   const target = pick.vote ? null : pick.part;
   if ((poll.parts || []).length && !(await stopsUnchanged())) return;
   // The list stays open so several places can be added in a row (up to 12 in all).
@@ -1474,21 +1484,23 @@ function finalHtml(f) {
   }).join('');
   const fday = f.day || poll.plan_day;
   return `<div class="final"><h2>✅ It’s set${when ? ' · ' + esc(when) : ''}</h2>${fday && fday >= isoDay(utahNow()) ? weatherHtml(fday) : ''}${stops}
-    ${(() => { const l = planCalLinks(); return l ? `<div class="calrow"><a class="calbtn" href="${esc(l.google)}" target="_blank" rel="noopener">📅 Google Calendar</a><a class="calbtn" href="${esc(l.outlook)}" target="_blank" rel="noopener">📅 Outlook</a></div>` : ''; })()}
+    ${(() => { const days = multiDay() ? [...new Set(poll.parts.map(partDay))].sort() : [null];
+      return days.map(d => { const l = planCalLinks(d); return l ? `${d ? `<div class="who" style="margin-top:10px">${esc(day(d))}</div>` : ''}<div class="calrow"${d ? ' style="margin-top:4px"' : ''}><a class="calbtn" href="${esc(l.google)}" target="_blank" rel="noopener">📅 Google Calendar</a><a class="calbtn" href="${esc(l.outlook)}" target="_blank" rel="noopener">📅 Outlook</a></div>` : ''; }).join(''); })()}
     <button class="downbtn" id="ics" style="margin-top:10px">📅 Apple / other calendar</button></div>`;
 }
 // Google / Outlook links for the set plan: one entry from the first stop to two
 // hours after the last, every stop in the notes (Utah time; Outlook takes the
 // times as the viewer's own zone).
-function planCalLinks() {
+function planCalLinks(only = null) {
   const f = poll.final; if (!f) return null;
   const picks = Array.isArray(f.parts) ? f.parts : [f.option];
-  const date = f.day || poll.plan_day || isoDay(utahNow());
-  const rows = picks.map((i, k) => { const o = poll.options[i] || {}, p = Array.isArray(f.parts) ? poll.parts[k] : null; return { o, p, t: (p && p.time) || f.time || (o.start_time ? String(o.start_time).slice(0, 5) : null) }; });
+  const date = only || f.day || poll.plan_day || isoDay(utahNow());
+  const rows = picks.map((i, k) => { const o = poll.options[i] || {}, p = Array.isArray(f.parts) ? poll.parts[k] : null; return { o, p, d: p ? partDay(p) : date, t: (p && p.time) || f.time || (o.start_time ? String(o.start_time).slice(0, 5) : null) }; });
+  if (only) for (let x = rows.length - 1; x >= 0; x--) if (rows[x].d !== only) rows.splice(x, 1);
   const times = rows.map(r => r.t).filter(Boolean).map(t => String(t).slice(0, 5)).sort();
   const pad = n => String(n).padStart(2, '0');
   const at = (hhmm, plus) => { const [y, m, d] = date.split('-').map(Number), [h, mi] = hhmm.split(':').map(Number); const t = new Date(Date.UTC(y, m - 1, d, h, mi + plus)); return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}T${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}:00`; };
-  const title = poll.title || 'Plans', e = encodeURIComponent;
+  const title = (poll.title || 'Plans') + (only && multiDay() ? ` (${wday(only)})` : ''), e = encodeURIComponent;
   const details = [...rows.map(r => `${r.t ? t12(r.t) + ' ' : ''}${r.p ? stopLabel(r.p, r.o) : placeName(r.o)}`), '', location.href].join('\n');
   const first = rows[0] ? rows[0].o : {};
   const loc = first.own ? first.business || '' : [first.business, first.city].filter(Boolean).join(', ');
@@ -1512,7 +1524,8 @@ function downloadIcs() {
   const ev = picks.map((i, k) => {
     const o = poll.options[i] || {}, p = Array.isArray(f.parts) ? poll.parts[k] : null;
     const t = (p && p.time) || f.time || (o.start_time ? String(o.start_time).slice(0, 5) : null);
-    const when = t ? [`DTSTART;TZID=America/Denver:${d0}T${t.replace(':', '')}00`, `DURATION:PT2H`] : [`DTSTART;VALUE=DATE:${d0}`];
+    const dd = p && p.date ? p.date.replace(/-/g, '') : d0;
+    const when = t ? [`DTSTART;TZID=America/Denver:${dd}T${t.replace(':', '')}00`, `DURATION:PT2H`] : [`DTSTART;VALUE=DATE:${dd}`];
     return ['BEGIN:VEVENT', `UID:${code}-${k}@near.by`, `DTSTAMP:${stamp}`, ...when,
       `SUMMARY:${fold(p ? stopLabel(p, o) : placeName(o))}`, `LOCATION:${fold(o.own ? o.business || '' : [o.business, o.city].filter(Boolean).join(', '))}`,
       `DESCRIPTION:${fold(`${o.title || ''}${o.price_info ? ' · ' + o.price_info : ''}\n${location.href}`)}`, 'END:VEVENT'].join('\r\n');
