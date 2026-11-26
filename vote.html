@@ -359,6 +359,8 @@ function render() {
   // The name box stays until a name is saved, then "Voting as Sam · Change".
   if (nameAsk === null) nameAsk = false; // asked on the first tap instead (the name sheet)
   const askName = nameAsk && !poll.closed;
+  // You've voted, answered, ticked a time or left a note on this plan.
+  const joined = !!((poll.my_votes || []).length || poll.my_rsvp || poll.i_am_down || (poll.my_times || []).length || (poll.part_times || []).some(x => x.mine) || (poll.comments || []).some(c => c.mine));
   // Locked in by the person who started it.
   const final = poll.final || null;
   const finalIdx = !final ? [] : Array.isArray(final.parts) ? final.parts : [final.option];
@@ -386,7 +388,8 @@ function render() {
     ${pastDay ? `<p class="off" style="text-align:left">This was for ${esc(day(planDayOf()))}.</p>` : ''}
     ${(() => { const n = (poll.activity || []).filter(a => seenAt && new Date(a.at).getTime() > seenAt).length; return n ? `<a class="newbar" href="#activity">🔔 ${n} new since you last looked ›</a>` : ''; })()}
     ${!poll.closed && !final && poll.closes_at && !(planDayOf() && isoDay(new Date(new Date(poll.closes_at).toLocaleString('en-US', { timeZone: 'America/Denver' }))) > planDayOf()) ? `<p class="who" style="text-align:left;margin:-4px 0 8px">Voting closes ${esc(new Date(poll.closes_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Denver' }))}</p>` : ''}
-    ${askName ? `<div class="namecard"><div class="t">👋 What’s your name?</div><div class="m">So your friends know who voted and who’s in.</div>
+    ${(() => { if (joined && !poll.my_name && savedName && !nameFilled) { nameFilled = true; saveName(); } return ''; })()}
+    ${askName || (joined && !poll.my_name && !savedName && !poll.closed) ? `<div class="namecard"><div class="t">👋 ${askName ? 'What’s your name?' : 'Friends see you as “Someone”'}</div><div class="m">${askName ? 'So your friends know who voted and who’s in.' : 'Add your name so they know it’s you who’s in and voted.'}</div>
       <div class="namerow"><input id="name" maxlength="30" autocomplete="given-name" placeholder="Your first name" value="${esc(savedName)}"><button id="savename">Save</button></div></div>`
       : !poll.closed && savedName ? `<p class="voting-as">Voting as <b>${esc(savedName)}</b> · <button id="chname">Change</button></p>` : ''}
     ${parted ? nightHtml(final ? final.parts : partWin, people, !!final, pastDay) : ''}
@@ -1712,7 +1715,7 @@ function askNameFirst() {
       <div class="m">So friends see who voted. You only need to do this once.</div>
       <input id="askname-in" maxlength="30" autocomplete="given-name" placeholder="Your first name">
       <button class="downbtn" id="askname-ok">Save</button>
-      <button class="linkbtn" id="askname-skip" style="display:block;margin:10px auto 0">Skip</button></div>`;
+      <button class="linkbtn" id="askname-skip" style="display:block;margin:10px auto 0">Not now · friends will see “Someone”</button></div>`;
     document.body.appendChild(box);
     const input = box.querySelector('#askname-in');
     setTimeout(() => input.focus(), 50);
@@ -1759,6 +1762,7 @@ async function setDownNow(on) {
 // The date a plan is "today" for: until 4am it's still last night.
 const planToday = () => isoDay(new Date(utahNow().getTime() - 4 * 3600e3));
 let nameAsk = null; // null: decide on the first render
+let nameFilled = false; // a name saved on this phone was put on this plan's answers
 function saveName() {
   const n = myName();
   if (!n) { document.getElementById('name')?.focus(); return; }
