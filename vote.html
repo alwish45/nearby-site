@@ -46,6 +46,8 @@
   .thread-btns { display:flex; gap:10px; align-items:center; margin-top:6px; }
   .thread-btns .downbtn { flex:1; margin:0; }
   .thread-btns .linkbtn { padding:0; }
+  .movebtn { display:block; margin:2px 0 6px; font-size:14px; }
+  .movebox { text-align:left; background:#fff; border:1.5px dashed var(--accent); border-radius:14px; padding:10px 12px; margin:4px 0 8px; }
   .thread-open { display:block; margin:8px 0 4px; }
   .cnote .del { background:none; border:0; font:inherit; font-size:12px; color:var(--muted); cursor:pointer; padding:0 0 0 6px; }
   textarea#note, .thread textarea { display:block; width:100%; box-sizing:border-box; font:inherit; font-size:16px; border:1.5px solid var(--line); border-radius:12px; padding:12px; margin-top:8px; resize:vertical; }
@@ -207,6 +209,32 @@ const cap = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
 // Details open under a place (by option index): what the deal is, when it runs,
 // address, today's hours, phone, website, menu, rating and the map.
 const openDetails = new Set();
+// The organizer moves a place to another stop, or to a new time ("↔ Move").
+let moveOpen = null;
+function moveHtml(o, i, pi, p) {
+  if (moveOpen !== i) return `<button class="linkbtn movebtn" data-move="${i}">↔ Move to another time</button>`;
+  const pd = partDay(p);
+  const others = poll.parts.map((q, j) => j === pi ? '' : `<button class="chip" data-moveto="${i}|${j}">${multiDay() ? esc(wday(partDay(q))) + ' ' : ''}${q.time ? esc(t12(q.time)) : esc(q.name)}</button>`).join('');
+  const taken = new Set(poll.parts.filter(q => partDay(q) === pd).map(q => q.time));
+  const near = p.time ? ALL_TIMES.filter(t => !taken.has(t) && Math.abs(mins(t) - mins(p.time)) <= 240) : ALL_TIMES;
+  const fresh = poll.parts.length < 6 ? near.map(t => `<button class="chip" data-movenew="${i}|${t}">${esc(t12(t))}</button>`).join('') : '';
+  return `<div class="movebox"><div class="who" style="margin:0">Move ${esc(o.business || o.title)} to${others ? ' another stop' : ''}…</div>
+    ${others ? `<div class="chips">${others}</div>` : ''}
+    ${fresh ? `<div class="who" style="margin:8px 0 0">…or a new time${multiDay() ? ` on ${esc(day(pd))}` : ''}:</div><div class="chips">${fresh}</div>` : ''}
+    <button class="linkbtn" data-move="${i}">Cancel</button></div>`;
+}
+async function moveOption(i, to, time) {
+  if (saving) return;
+  const o = poll.options[i], from = poll.parts[o.part];
+  saving = true;
+  try {
+    poll = await rpc('move_poll_option', { p_code: code, p_creator_key: me, p_option: i,
+      ...(to != null ? { p_to_part: to } : { p_time: time, p_date: partDay(from) || null, p_stop_name: stopKind(o, time) }) });
+    moveOpen = null; threadOpen.clear(); adding = false; lastWrite = Date.now();
+  } catch (e) { alert(/could not find the function/i.test(e.message) ? 'Moving places isn’t switched on yet.' : /full|6 parts/.test(e.message) ? 'That’s full: a plan has up to 6 times, each with up to 6 places.' : /plan is set/.test(e.message) ? 'The plan is set, so it can’t change now.' : "Couldn't move that. Try again."); }
+  saving = false;
+  render();
+}
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const linkOf = u => (/^https?:\/\//i.test(u || '') ? u : u ? `https://${u}` : '');
 function detailsHtml(o, i) {
@@ -335,7 +363,7 @@ function render() {
           ${o.added_by ? `<div class="who">Suggested by ${esc(o.added_by)}${fixed && !final ? '. It’s in the plan unless the organizer removes it. Want something else? Suggest another option.' : ''}</div>` : ''}
           ${names ? `<div class="who">${names}</div>` : ''}
         </span>${invite || fixed ? '' : `<span class="n">${n}${mine.includes(i) ? ' ✓' : ''}</span>`}</span>
-      </button>${more(o, i)}`;
+      </button>${more(o, i)}${p && poll.is_creator && !final && !poll.closed ? moveHtml(o, i, pi, p) : ''}`;
       }).join('');
       const open = adding && addPart === pi;
       const sug = poll.can_add && !final && (!p || idxs.length < 6)
@@ -369,6 +397,9 @@ function render() {
   document.getElementById('textstop')?.addEventListener('click', () => setTexts(null));
   document.getElementById('textme')?.addEventListener('click', () => { const v = document.getElementById('phone')?.value || ''; if (v.replace(/\D/g, '').length >= 10) setTexts(v); else document.getElementById('phone')?.focus(); });
   document.getElementById('phone')?.addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('textme')?.click(); });
+  app.querySelectorAll('[data-move]').forEach(b => b.addEventListener('click', () => { const i = Number(b.dataset.move); moveOpen = moveOpen === i ? null : i; render(); }));
+  app.querySelectorAll('[data-moveto]').forEach(b => b.addEventListener('click', () => { const [i, j] = b.dataset.moveto.split('|').map(Number); moveOption(i, j, null); }));
+  app.querySelectorAll('[data-movenew]').forEach(b => b.addEventListener('click', () => { const [i, t] = b.dataset.movenew.split('|'); moveOption(Number(i), null, t); }));
   app.querySelectorAll('[data-det]').forEach(b => b.addEventListener('click', () => { const i = Number(b.dataset.det); if (openDetails.has(i)) openDetails.delete(i); else openDetails.add(i); render(); }));
   app.querySelectorAll('[data-det-go]').forEach(b => b.addEventListener('click', () => {
     const i = Number(b.dataset.detGo); openDetails.add(i); render();
@@ -1644,7 +1675,7 @@ async function load() {
   try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { fresh = poll ? undefined : null; }
   if (saving || lastWrite >= startedAt) return;
   // A stop added in front moves every stop's number: close an open suggestion list and other-times rows.
-  if (fresh && poll && (fresh.parts || []).length !== (poll.parts || []).length) { threadOpen.clear(); if (typeof addPart === 'number') adding = false; ptOpen.clear(); }
+  if (fresh && poll && (fresh.parts || []).length !== (poll.parts || []).length) { threadOpen.clear(); moveOpen = null; if (typeof addPart === 'number') adding = false; ptOpen.clear(); }
   if (fresh !== undefined) poll = fresh;
   // Don't redraw under someone typing their name, a note or a search, or picking a time.
   if (!addingTime && !typingIn()) render();
