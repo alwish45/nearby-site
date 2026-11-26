@@ -128,6 +128,7 @@
   .tix { margin-top:6px; padding:8px 10px; border-radius:10px; background:#f5f1ea; text-align:left; }
   .tixrow { display:flex; align-items:center; gap:12px; flex-wrap:wrap; margin-top:6px; }
   .tixrow a { color:#c2410c; font-weight:800; text-decoration:none; }
+  .dayplan { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:-2px 0 12px; padding:0 4px; }
   .newbar { display:block; margin:0 0 10px; padding:10px 12px; border-radius:12px; background:#fff1e6; color:#9a3412; font-weight:800; text-decoration:none; text-align:left; }
   .actrow { display:flex; justify-content:space-between; gap:10px; padding:7px 0; border-top:1px solid var(--line); font-size:15px; text-align:left; }
   .actrow.new span:first-child { font-weight:800; } .actrow.new span:first-child::after { content:' · New'; color:#c2410c; }
@@ -235,14 +236,14 @@ let editing = false; // the organizer's "Edit stops": Move and remove show only 
 function moveHtml(o, i, pi, p) {
   if (moveOpen !== i) return `<button class="linkbtn movebtn" data-move="${i}">↔ Move to another time</button>`;
   const pd = partDay(p);
-  const others = poll.parts.map((q, j) => j === pi ? '' : `<button class="chip" data-moveto="${i}|${j}">${multiDay() ? esc(wday(partDay(q))) + ' ' : ''}${q.time ? esc(t12(q.time)) : esc(q.name)}</button>`).join('');
+  const others = poll.parts.map((q, j) => j === pi ? '' : `<button class="chip" data-moveto="${i}|${j}">${showDays() ? esc(wday(partDay(q))) + ' ' : ''}${q.time ? esc(t12(q.time)) : esc(q.name)}</button>`).join('');
   const taken = new Set(poll.parts.filter(q => partDay(q) === pd).map(q => q.time));
   const near = (p.time ? ALL_TIMES.filter(t => !taken.has(t) && Math.abs(mins(t) - mins(p.time)) <= 240) : ALL_TIMES).filter(t => !gonePast(pd, t));
   const only = poll.options.filter(x => x.part === pi).length === 1; // re-times the stop itself
   const fresh = poll.parts.length < 6 || only ? near.map(t => `<button class="chip" data-movenew="${i}|${t}">${esc(t12(t))}</button>`).join('') : '';
   return `<div class="movebox"><div class="who" style="margin:0">Move ${esc(o.business || o.title)} to${others ? ' another stop' : ''}…</div>
     ${others ? `<div class="chips">${others}</div>` : ''}
-    ${fresh ? `<div class="who" style="margin:8px 0 0">…or a new time${multiDay() ? ` on ${esc(day(pd))}` : ''}:</div><div class="chips">${fresh}</div>` : ''}
+    ${fresh ? `<div class="who" style="margin:8px 0 0">…or a new time${showDays() ? ` on ${esc(day(pd))}` : ''}:</div><div class="chips">${fresh}</div>` : ''}
     <button class="linkbtn" data-move="${i}">Cancel</button></div>`;
 }
 // What changed between two versions of the stops, in a sentence (for "the plan just changed").
@@ -398,7 +399,7 @@ function render() {
       const w = p ? partWin[pi] : win, secTop = Math.max(0, ...idxs.map(i => poll.counts[i] || 0));
       const fixed = !!p && idxs.length === 1;
       const hop = p && pi > 0 && partDay(poll.parts[pi - 1]) === partDay(p) ? hopText(poll.options.filter(o => o.part === pi - 1), poll.options.filter(o => o.part === pi)) : null;
-      const dhead = (hop ? `<div class="hopbetween">${esc(hop)}</div>` : '') + (p && multiDay() && (pi === 0 || partDay(poll.parts[pi - 1]) !== partDay(p)) ? `<h3 class="dayhead">📅 ${esc(longDay(partDay(p)))}${partDay(p) >= isoDay(utahNow()) ? weatherHtml(partDay(p)) : ''}</h3>` : '');
+      const dhead = (hop ? `<div class="hopbetween">${esc(hop)}</div>` : '') + (p && showDays() && (pi === 0 || partDay(poll.parts[pi - 1]) !== partDay(p)) ? `<h3 class="dayhead">📅 ${esc(longDay(partDay(p)))}${partDay(p) >= isoDay(utahNow()) ? weatherHtml(partDay(p)) : ''}</h3>` : '');
       const head = dhead + (p ? `<div class="part-head" id="step-part-${pi}"><span class="pnum">${pi + 1}</span><span class="pname">${p.time ? esc(t12(p.time)) : esc(p.name)}</span>${editing && p && poll.is_creator && !final && !poll.closed && poll.parts.length > 1 ? `<button class="rmstop" data-rmstop="${pi}" aria-label="Remove this stop">✕</button>` : ''}<span class="pstate">${final ? '✅ Set' : fixed ? (poll.options[idxs[0]].added_by ? `💡 From ${esc(poll.options[idxs[0]].added_by)}` : '') : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span></div>${'part_times' in poll && !final && !poll.closed ? partTimesHtml(pi, p) : ''}` : '');
       const opts = idxs.map(i => {
         const o = poll.options[i];
@@ -474,13 +475,15 @@ function render() {
   app.querySelectorAll('[data-how]').forEach(b => b.addEventListener('click', () => setHow(b.dataset.how)));
   bindPartTimes();
   app.querySelectorAll('[data-step]').forEach(b => b.addEventListener('click', () => document.getElementById(`step-${b.dataset.step}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })));
-  const openAdd = () => { stopOpen = true; adding = true; addPart = 'any'; feed.q = ''; feed.cat = ''; loadNearby(); render(); };
-  document.getElementById('stopopen')?.addEventListener('click', openAdd);
+  const openAdd = (d = null) => { addDay = typeof d === 'string' ? d : null; stopOpen = true; adding = true; addPart = 'any'; feed.q = ''; feed.cat = ''; loadNearby(); render(); };
+  app.querySelectorAll('[data-planday]').forEach(b => b.addEventListener('click', () => { openAdd(b.dataset.planday); document.getElementById('step-addstop')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }));
+  app.querySelectorAll('[data-bringfrom]').forEach(b => b.addEventListener('click', () => { const [f, t] = b.dataset.bringfrom.split('|'); bringOver(f, t); }));
+  document.getElementById('stopopen')?.addEventListener('click', () => openAdd());
   app.querySelectorAll('[data-ticket]').forEach(b => b.addEventListener('click', () => toggleTicket(b.dataset.ticket)));
   document.getElementById('actmore')?.addEventListener('click', () => { actAll = !actAll; render(); });
-  document.getElementById('stopclose')?.addEventListener('click', () => { stopOpen = false; adding = false; addPart = null; render(); });
+  document.getElementById('stopclose')?.addEventListener('click', () => { stopOpen = false; adding = false; addPart = null; addDay = null; render(); });
   document.body.classList.toggle('has-fab', !!document.getElementById('fab'));
-  document.getElementById('fab')?.addEventListener('click', () => { openAdd(); document.getElementById('step-addstop')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
+  document.getElementById('fab')?.addEventListener('click', () => { openAdd(null); document.getElementById('step-addstop')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   app.querySelectorAll('[data-dayadd]').forEach(b => b.addEventListener('click', async () => { const pl = dayPlanSlot(); dayOpen = false; await suggestTime(b.dataset.dayadd, pl.time, pl); }));
   document.getElementById('daymore')?.addEventListener('click', () => { dayOpen = !dayOpen; render(); });
   bindOwn();
@@ -525,11 +528,13 @@ function standFooter() {
   const open = (poll.parts || []).map((_, pi) => stopStanding(pi)).filter(x => !x.ok).length;
   const dayLine = Array.isArray(poll.times) && poll.times.length > 1 && !multiDay() ? (() => {
     const c = poll.time_counts || [], top = Math.max(0, ...c), lead = c.map((x, i) => (x === top ? i : -1)).filter(i => i >= 0);
-    return !top ? '📅 Which day? No answers yet' : lead.length === 1 ? `📅 ${day(poll.times[lead[0]].day)} works for the most people` : '📅 The day is tied';
+    return !top ? '📅 Which day? No answers yet' : lead.length === 1 ? `📅 ${day(poll.times[lead[0]].day)} works for the most people${altDays() ? ` · its plan is the one that counts` : ''}` : '📅 The day is tied';
   })() : '';
-  const msg = open ? `Still open: ${open} stop${open === 1 ? '' : 's'}. Vote or suggest to settle ${open === 1 ? 'it' : 'them'}.`
+  const dayOpenAlt = altDays() && (() => { const c = poll.time_counts || [], top = Math.max(0, ...c); return !top || c.filter(x => x === top).length > 1; })();
+  const msg = dayOpenAlt ? `Still open: the day${open ? ` and ${open} stop${open === 1 ? '' : 's'}` : ''}. Tick the days that work for you.`
+    : open ? `Still open: ${open} stop${open === 1 ? '' : 's'}. Vote or suggest to settle ${open === 1 ? 'it' : 'them'}.`
     : poll.is_creator ? 'Every stop has a pick. Lock it in from the near.by app.' : 'Every stop has a pick. The organizer locks it in.';
-  return `<div class="standfoot ${open ? 'open' : 'ok'}">${dayLine ? `<div>${esc(dayLine)}</div>` : ''}<div>${esc(msg)}</div></div>`;
+  return `<div class="standfoot ${open || dayOpenAlt ? 'open' : 'ok'}">${dayLine ? `<div>${esc(dayLine)}</div>` : ''}<div>${esc(msg)}</div></div>`;
 }
 // A plan's night: each part's time and the place in the lead, with directions.
 function nightHtml(winners, people, locked = false, pastDay = false) {
@@ -541,14 +546,15 @@ function nightHtml(winners, people, locked = false, pastDay = false) {
     const w = winners[pi], o = w >= 0 ? poll.options[w] : null, t = o ? timed(o) : null;
     const pd = partDay(p);
     const off = !pastDay && t && p.time && onAt(t, pd, p.time) === false;
-    const prev = pi > 0 ? stops[pi - 1] : null;
+    // Distance only between stops on the same day.
+    const prev = pi > 0 && partDay(poll.parts[pi - 1]) === pd ? stops[pi - 1] : null;
     const hop = prev && prev.lat && o && o.lat ? miles(prev, o) : null;
     const hopLine = hop == null ? '' : `<div class="hop" ${hop > 5 ? 'style="color:#b4441c"' : ''}>↓ ${hop < 0.1 ? 'next door' : hop.toFixed(1) + ' mi'} · ~${Math.max(1, Math.round(hop <= 0.8 ? hop * 20 : hop * 2.5 + 3))} min ${hop <= 0.8 ? 'walk' : 'drive'}${hop > 5 ? ' · far apart' : ''}</div>`;
     const near = off ? nearestOn(t, pd, p.time) : null;
     const st = locked || pastDay ? null : stopStanding(pi);
     // Today, and the time's gone by (a 9am stop on a plan sent at noon).
     const now = utahNow(), gone = !locked && !pastDay && pd === isoDay(now) && p.time && mins(p.time) < now.getHours() * 60 + now.getMinutes();
-    return `${hopLine}<div class="night-row"><span class="ntime">${multiDay() ? esc(wday(pd)) + '<br>' : ''}${p.time ? esc(t12(p.time)) : '—'}</span><span class="grow">
+    return `${hopLine}<div class="night-row"><span class="ntime">${showDays() ? esc(wday(pd)) + '<br>' : ''}${p.time ? esc(t12(p.time)) : '—'}</span><span class="grow">
       <div class="t">${o ? esc(stopLabel(p, o)) : st && st.tie ? esc(st.tie) : 'Still voting'}</div>
       ${st ? `<div class="stand ${st.ok ? 'ok' : 'open'}">${esc(st.line)}</div>${st.time ? `<div class="who" style="margin:2px 0 0">${esc(st.time)}</div>` : ''}` : ''}
       ${o && o.own && o.business ? `<div class="who">📍 ${esc(o.business)}</div>` : ''}
@@ -559,9 +565,9 @@ function nightHtml(winners, people, locked = false, pastDay = false) {
     </span></div>`;
   }).join('');
   const located = stops.filter(o => o && o.lat);
-  const route = located.length >= 2 ? `https://www.google.com/maps/dir/?api=1&origin=${located[0].lat},${located[0].lng}&destination=${located[located.length - 1].lat},${located[located.length - 1].lng}${located.length > 2 ? '&waypoints=' + encodeURIComponent(located.slice(1, -1).map(o => `${o.lat},${o.lng}`).join('|')) : ''}` : '';
+  const route = !showDays() && located.length >= 2 ? `https://www.google.com/maps/dir/?api=1&origin=${located[0].lat},${located[0].lng}&destination=${located[located.length - 1].lat},${located[located.length - 1].lng}${located.length > 2 ? '&waypoints=' + encodeURIComponent(located.slice(1, -1).map(o => `${o.lat},${o.lng}`).join('|')) : ''}` : '';
   const dayPlan = poll.parts.some(p => p.time && String(p.time).slice(0, 5) < '16:00');
-  return `<div class="box"><h2>${multiDay() ? '🗓️ The plan · ' + esc(day(partDay(poll.parts[0]))) + ' – ' + esc(day(partDay(poll.parts[poll.parts.length - 1]))) : `${dayPlan ? '☀️ Your day' : '🌃 Your night'} · ${pastDay ? 'was ' + esc(day(pday)) : pday === today ? (dayPlan ? 'Today' : 'Tonight') : esc(day(pday))}`}${locked ? ' · set' : ''}</h2>${multiDay() ? [...new Set(poll.parts.map(partDay))].sort().filter(d => d >= today).map(d => weatherHtml(d, false, wday(d))).join('') : pastDay ? '' : weatherHtml(pday, dayPlan)}${rows}
+  return `<div class="box"><h2>${altDays() ? '🗓️ The plan for each day · ' + [...new Set(poll.parts.map(partDay))].sort().map(wday).join(' or ') : multiDay() ? '🗓️ The plan · ' + esc(day(partDay(poll.parts[0]))) + ' – ' + esc(day(partDay(poll.parts[poll.parts.length - 1]))) : `${dayPlan ? '☀️ Your day' : '🌃 Your night'} · ${pastDay ? 'was ' + esc(day(pday)) : pday === today ? (dayPlan ? 'Today' : 'Tonight') : esc(day(pday))}`}${locked ? ' · set' : ''}</h2>${showDays() ? [...new Set(poll.parts.map(partDay))].sort().filter(d => d >= today).map(d => weatherHtml(d, false, wday(d))).join('') : pastDay ? '' : weatherHtml(pday, dayPlan)}${rows}
     ${route ? `<div style="text-align:left;margin-top:8px"><a href="${route}" target="_blank" rel="noopener" style="color:#c2410c;font-weight:700;text-decoration:none">🗺️ The whole route in Maps ›</a></div>` : ''}
     ${locked || pastDay ? '' : standFooter()}</div>`;
 }
@@ -913,7 +919,7 @@ function anchorFor(pi) {
   return (poll.options || []).find(o => o.lat) || null;
 }
 // The vote's day when it's later than today ("Thursday?"), else null.
-const futureDay = () => { const ps = (poll && poll.parts) || [], d = typeof addPart === 'number' && ps[addPart] ? partDay(ps[addPart]) : isStop(addPart) && ps.length ? partDay(addPart === 'before' ? ps[0] : ps[ps.length - 1]) : poll && poll.plan_day; return d && d > isoDay(utahNow()) ? d : null; };
+const futureDay = () => { const ps = (poll && poll.parts) || [], d = addDay && adding ? addDay : typeof addPart === 'number' && ps[addPart] ? partDay(ps[addPart]) : isStop(addPart) && ps.length ? partDay(addPart === 'before' ? ps[0] : ps[ps.length - 1]) : poll && poll.plan_day; return d && d > isoDay(utahNow()) ? d : null; };
 async function loadNearby() {
   if (!poll) return;
   const at = anchorFor(addPart);
@@ -1213,7 +1219,19 @@ function myName() {
 const planDayOf = () => (poll && ((poll.final && poll.final.day) || poll.plan_day)) || null;
 // Multi-day plans: a stop's own day, else the plan's; and whether the stops span days.
 const partDay = p => (p && p.date) || planDayOf() || isoDay(utahNow());
-const multiDay = () => new Set(((poll && poll.parts) || []).map(p => p.date).filter(Boolean)).size > 1;
+const dayOptions = () => (Array.isArray(poll && poll.times) ? [...new Set(poll.times.map(t => t.day))] : []);
+const altDays = () => {
+  const ps = (poll && poll.parts) || [], opts = new Set(dayOptions());
+  if (opts.size < 2 || !ps.length) return false;
+  const ds = new Set(ps.map(partDay));
+  return ds.size > 1 && [...ds].every(d => opts.has(d));
+};
+const multiDay = () => !altDays() && new Set(((poll && poll.parts) || []).map(p => p.date).filter(Boolean)).size > 1;
+// Stops are labelled and grouped by day: a multi-day plan, or a plan for each suggested day.
+const showDays = () => multiDay() || altDays();
+// Days a new stop can go on: the plan's days, plus every suggested day.
+const dayChoices = () => [...new Set([...((poll && poll.parts) || []).map(partDay), ...(dayOptions().length > 1 ? dayOptions() : [])])].sort();
+let addDay = null; // "＋ Plan Saturday": the day the next stop goes on
 // "↓ 1.2 mi · ~6 min drive" between two stops; a range when it depends on the pick.
 function hopText(from, to) {
   const a = from.filter(o => o && o.lat != null), b = to.filter(o => o && o.lat != null);
@@ -1233,6 +1251,73 @@ function dayPlanSlot() {
   const p0 = (poll.parts || []).find(p => p.time);
   return { day: poll.plan_day && poll.plan_day >= today ? poll.plan_day : today, time: String(p0 ? p0.time : '12:00').slice(0, 5) };
 }
+// Each suggested day can have its own plan: what's on it so far, "＋ Plan
+// Saturday" (add a place or your own, on that day), and "Bring over from
+// Friday" (copy that day's stops). Locking in keeps the winning day's plan.
+function dayPlanHtml(d) {
+  if (!poll.can_add || poll.final || poll.closed || (poll.parts || []).length >= 6) return '';
+  const on = (poll.parts || []).filter(p => partDay(p) === d);
+  const from = [...new Set((poll.parts || []).map(partDay))].filter(x => x !== d).sort();
+  return `<div class="dayplan">${on.length ? `<span class="who" style="margin:0">${on.length} stop${on.length === 1 ? '' : 's'}: ${esc(on.map(p => (p.time ? t12(p.time) : p.name)).join(', '))}</span>` : ''}
+    <button class="chip" data-planday="${d}">＋ ${on.length ? 'Add to' : 'Plan'} ${esc(wday(d))}</button>
+    ${from.map(f => `<button class="chip" data-bringfrom="${f}|${d}">↪ Bring over from ${esc(wday(f))}</button>`).join('')}</div>`;
+}
+// Copy stops (and their places) from one day to another, one at a time:
+// each stop's first place makes the new stop at the same time, the rest join it.
+async function bringOver(from, to) {
+  const src = (poll.parts || []).map((p, pi) => ({ p, pi })).filter(x => partDay(x.p) === from);
+  if (!src.length) return;
+  const picked = await askBring(src, from, to);
+  if (!picked || !picked.length) return;
+  if (!(await askNameFirst())) return;
+  return once(async () => {
+    let copied = 0, missed = 0;
+    for (const { p, pi } of picked) {
+      if ((poll.parts || []).length >= 6) { missed++; continue; }
+      const opts = poll.options.filter(o => o.part === pi);
+      let at = null;
+      for (const o of opts) {
+        const own = o.own ? { p_title: o.title, p_place: o.business || null, p_lat: o.lat ?? null, p_lng: o.lng ?? null } : { p_deal_id: o.deal_id };
+        try {
+          if (at == null) {
+            poll = await rpc('add_poll_stop', { p_code: code, p_voter_key: me, p_where: 'time', p_name: myName(), p_stop_date: to, p_stop_time: String(p.time || '19:00').slice(0, 5), p_stop_name: p.name, ...own });
+            at = (poll.parts || []).findIndex(q => partDay(q) === to && String(q.time || '').slice(0, 5) === String(p.time || '19:00').slice(0, 5));
+          } else if (at >= 0) {
+            poll = await rpc('add_poll_option', { p_code: code, p_voter_key: me, p_name: myName(), p_part: at, ...(o.own ? { p_title: o.title, p_place: o.business || null, p_lat: o.lat ?? null, p_lng: o.lng ?? null } : { p_deal_id: o.deal_id }) });
+          }
+        } catch { missed++; continue; }
+      }
+      if (at != null && at >= 0) copied++;
+    }
+    render(); loadInfo();
+    toast(copied ? `Brought ${copied} stop${copied === 1 ? '' : 's'} over to ${wday(to)}${missed ? ` (${missed} couldn’t come)` : ''}` : 'Couldn’t bring those over. Try again.');
+  });
+}
+// Which of a day's stops to bring over: all ticked to start.
+function askBring(src, from, to) {
+  return new Promise(resolve => {
+    const box = document.createElement('div');
+    box.className = 'askname';
+    const on = new Set(src.map(x => x.pi));
+    const done = v => { box.remove(); resolve(v); };
+    const draw = () => {
+      box.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="bring-t">
+        <div class="t" id="bring-t">Bring over to ${esc(longDay(to))}</div>
+        <div class="m">From ${esc(longDay(from))}. Same times and places; friends vote on ${esc(wday(to))}'s on their own.</div>
+        <div style="margin-top:10px">${src.map(({ p, pi }) => `<button class="opt ${on.has(pi) ? 'mine' : ''}" data-bpi="${pi}" aria-pressed="${on.has(pi)}" style="margin-bottom:6px"><span class="row"><span class="grow">
+          <div class="t">${on.has(pi) ? '✓ ' : ''}${p.time ? esc(t12(p.time)) + ' · ' : ''}${esc(p.name)}</div>
+          <div class="m">${esc(poll.options.filter(o => o.part === pi).map(placeName).join(', '))}</div></span></span></button>`).join('')}</div>
+        <button class="downbtn" id="bring-ok" ${on.size ? '' : 'disabled'}>Bring ${on.size} stop${on.size === 1 ? '' : 's'} over</button>
+        <button class="linkbtn" id="bring-no" style="display:block;margin:10px auto 0">Cancel</button></div>`;
+      box.querySelectorAll('[data-bpi]').forEach(b => b.addEventListener('click', () => { const k = Number(b.dataset.bpi); if (on.has(k)) on.delete(k); else on.add(k); draw(); }));
+      box.querySelector('#bring-ok').addEventListener('click', () => done(src.filter(x => on.has(x.pi))));
+      box.querySelector('#bring-no').addEventListener('click', () => done(null));
+    };
+    box.addEventListener('click', e => { if (e.target === box) done(null); });
+    draw();
+    document.body.appendChild(box);
+  });
+}
 function dayVoteHtml() {
   const times = poll.times, counts = poll.time_counts || [], mineT = poll.my_times || [], people = poll.time_people || 0;
   const today = isoDay(utahNow()), plan = dayPlanSlot();
@@ -1245,7 +1330,7 @@ function dayVoteHtml() {
       <span class="row"><span class="grow"><div class="t">📅 ${esc(long(t.day))}${new Set(times.map(x => String(x.time).slice(0, 5))).size > 1 ? ' · ' + esc(t12(t.time)) : ''}</div>
       ${t.planned ? '<div class="who">The plan</div>' : ''}${i === best ? `<div class="on">${people >= 2 && n === people ? '✅ Works for everyone' : '⭐ Works for the most people'}</div>` : ''}
       ${t.added_by ? `<div class="who">Suggested by ${esc(t.added_by)}</div>` : ''}${names ? `<div class="who">${names}</div>` : ''}
-      </span><span class="n">${n}${mineT.includes(i) ? ' ✓' : ''}</span></span></button>`;
+      </span><span class="n">${n}${mineT.includes(i) ? ' ✓' : ''}</span></span></button>${dayPlanHtml(t.day)}`;
   }).join('') : `<button class="opt" data-dayadd="${plan.day}"><span class="row"><span class="grow"><div class="t">📅 ${esc(long(plan.day))}</div><div class="who">The plan · tap if it works for you</div></span></span></button>`;
   const listed = new Set(times.map(t => t.day));
   const more = dayOpen ? Array.from({ length: 21 }, (_, i) => isoDay(new Date(utahNow().getTime() + i * 864e5))).filter(d => !listed.has(d) && (times.length || d !== plan.day))
@@ -1443,7 +1528,7 @@ function stopHtml() {
   const parts = poll.parts || [];
   if (!poll.can_add || poll.final || poll.closed || parts.length >= 6) return '';
   if (!(stopOpen && adding && addPart === 'any')) return `<button class="suggest" id="stopopen">＋ Add something to the plan</button>`;
-  return `<div class="box" id="step-addstop"><h2>＋ Add something to the plan</h2>
+  return `<div class="box" id="step-addstop"><h2>＋ Add something to ${addDay ? esc(longDay(addDay)) : 'the plan'}</h2>
     <div class="m" style="margin-bottom:10px">Pick a place below or add your own, then choose when: at the same time as a stop (friends vote between them) or a time of its own.</div>
     ${'part_times' in poll ? ownHtml(true) : ''}${picksHtml()}
     <button class="linkbtn" id="stopclose" style="margin-top:8px">Close</button></div>`;
@@ -1467,14 +1552,14 @@ function addStop(id, where, own = null, at = null, onDate = null) {
         if (near && (where === 'before' ? mins(near) < mins(base) : mins(near) > mins(base))) time = near;
       }
     }
-    poll = await rpc('add_poll_stop', { p_code: code, p_voter_key: me, p_where: at ? 'time' : where, p_name: myName(), ...(onDate && multiDay() ? { p_stop_date: onDate } : {}),
+    poll = await rpc('add_poll_stop', { p_code: code, p_voter_key: me, p_where: at ? 'time' : where, p_name: myName(), ...(onDate && (showDays() || dayChoices().length > 1) ? { p_stop_date: onDate } : {}),
       ...(own ? { p_title: own.title, p_place: own.place, p_lat: own.lat, p_lng: own.lng } : { p_deal_id: id }),
       p_stop_name: own ? (OUTDOOR.test(`${own.title} ${own.place || ''}`) ? 'A walk' : own.title.slice(0, 30)) : stopKind(d, time) || (where === 'before' ? 'Before' : 'After'), p_stop_time: time,
       p_main_name: kinds.length && kinds.every(k => k && k === kinds[0]) ? kinds[0] : null,
       p_main_time: slot && slot.time ? String(slot.time).slice(0, 5) : null });
     // The new stop's list stays open, so you can suggest other options for it.
     const n = (poll.parts || []).length;
-    if (at) { adding = false; stopOpen = false; }
+    if (at) { adding = false; stopOpen = false; addDay = null; }
     else if (n) { addPart = where === 'before' ? 0 : n - 1; stopOpen = false; } else adding = false;
     clearOwn(); render(); loadInfo(); if (adding) loadNearby();
     if (at) toast(`Added at ${t12(at)} · friends can vote on it`); }
@@ -1501,7 +1586,9 @@ function askWhen(d) {
     time = base ? pad(addPart === 'before' ? Math.max(300, mins(base) - 90) : Math.min(mins(base) + 120, 1410)) : '19:00';
   }
   if (typeof part === 'number') time = st || String(parts[part].time || time).slice(0, 5);
-  let onDate = typeof part === 'number' ? partDay(parts[part]) : parts.length ? partDay(addPart === 'before' ? parts[0] : parts[parts.length - 1]) : null;
+  let onDate = typeof part === 'number' ? partDay(parts[part]) : addDay || (parts.length ? partDay(addPart === 'before' ? parts[0] : parts[parts.length - 1]) : null);
+  if (addDay && part === 'vote') part = null;
+  if (addDay && !st) { const same = parts.filter(p => partDay(p) === addDay); time = String((same.length ? same[same.length - 1].time : parts.length ? parts[0].time : '19:00') || '19:00').slice(0, 5); }
   const ds = poll.plan_day && poll.plan_day >= planToday() ? poll.plan_day : isoDay(utahNow());
   const name = d.business_name || d.title;
   return new Promise(resolve => {
@@ -1512,16 +1599,17 @@ function askWhen(d) {
       const joining = part === 'vote' || typeof part === 'number';
       const shown = typeof part === 'number' ? String(parts[part].time || time).slice(0, 5) : time;
       const off = part !== 'vote' && d.deal_id && onAt(d, ds, shown) === false;
+      const near = parts.map((p, j) => [p, j]).filter(([p]) => !addDay || partDay(p) === onDate);
       const chips = parts.length
-        ? parts.map((p, j) => `<button class="chip ${part === j ? 'on' : ''}" data-wpart="${j}" aria-pressed="${part === j}">${multiDay() ? esc(wday(partDay(p))) + ' ' : ''}${p.time ? esc(t12(p.time)) + ' · ' : ''}${esc(p.name)}</button>`).join('')
+        ? near.map(([p, j]) => `<button class="chip ${part === j ? 'on' : ''}" data-wpart="${j}" aria-pressed="${part === j}">${showDays() ? esc(wday(partDay(p))) + ' ' : ''}${p.time ? esc(t12(p.time)) + ' · ' : ''}${esc(p.name)}</button>`).join('')
         : `<button class="chip ${part === 'vote' ? 'on' : ''}" data-wpart="vote" aria-pressed="${part === 'vote'}">With the other options</button>`;
       box.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="when-t">
         <div class="t" id="when-t">When for ${esc(name)}?</div>
         <div class="m">${esc(d.title || '')}${st ? ` · starts ${esc(t12(st))}` : ''}</div>
-        <div class="who" style="margin-top:12px;font-weight:800">${parts.length ? 'Same time as' : 'Add it to the vote'}</div>
-        <div class="chips" style="padding-top:6px">${chips}</div>
+        ${chips ? `<div class="who" style="margin-top:12px;font-weight:800">${parts.length ? 'Same time as' : 'Add it to the vote'}</div>
+        <div class="chips" style="padding-top:6px">${chips}</div>` : ''}
         <div class="who" style="margin-top:14px;font-weight:800">Or its own time${parts.length ? ' (a new stop)' : ' (makes it a plan)'}</div>
-        ${multiDay() ? `<div class="chips" style="padding-top:2px">${[...new Set(parts.map(partDay))].sort().map(x => `<button class="chip ${!joining && onDate === x ? 'on' : ''}" data-wday="${x}">${esc(day(x))}</button>`).join('')}</div>` : ''}
+        ${dayChoices().length > 1 ? `<div class="chips" style="padding-top:2px">${dayChoices().map(x => `<button class="chip ${!joining && onDate === x ? 'on' : ''}" data-wday="${x}">${esc(day(x))}</button>`).join('')}</div>` : ''}
         <div class="whenrow"><button class="whenstep" id="when-dn" aria-label="30 minutes earlier">‹</button><span class="whentime ${joining && part !== 'vote' ? 'dim' : ''}">${esc(t12(joining && part !== 'vote' ? shown : time))}</span><button class="whenstep" id="when-up" aria-label="30 minutes later">›</button></div>
         ${off ? `<div class="off" style="text-align:center">${esc(name)} may not be open at ${esc(t12(shown))}</div>` : ''}
         <button class="downbtn" id="when-ok">${part === 'vote' ? 'Add it to the vote' : joining ? `Add as an option at ${esc(t12(shown))}` : `Suggest it at ${esc(t12(time))}`}</button>
