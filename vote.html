@@ -224,7 +224,8 @@ function moveHtml(o, i, pi, p) {
   const others = poll.parts.map((q, j) => j === pi ? '' : `<button class="chip" data-moveto="${i}|${j}">${multiDay() ? esc(wday(partDay(q))) + ' ' : ''}${q.time ? esc(t12(q.time)) : esc(q.name)}</button>`).join('');
   const taken = new Set(poll.parts.filter(q => partDay(q) === pd).map(q => q.time));
   const near = p.time ? ALL_TIMES.filter(t => !taken.has(t) && Math.abs(mins(t) - mins(p.time)) <= 240) : ALL_TIMES;
-  const fresh = poll.parts.length < 6 ? near.map(t => `<button class="chip" data-movenew="${i}|${t}">${esc(t12(t))}</button>`).join('') : '';
+  const only = poll.options.filter(x => x.part === pi).length === 1; // re-times the stop itself
+  const fresh = poll.parts.length < 6 || only ? near.map(t => `<button class="chip" data-movenew="${i}|${t}">${esc(t12(t))}</button>`).join('') : '';
   return `<div class="movebox"><div class="who" style="margin:0">Move ${esc(o.business || o.title)} to${others ? ' another stop' : ''}…</div>
     ${others ? `<div class="chips">${others}</div>` : ''}
     ${fresh ? `<div class="who" style="margin:8px 0 0">…or a new time${multiDay() ? ` on ${esc(day(pd))}` : ''}:</div><div class="chips">${fresh}</div>` : ''}
@@ -260,7 +261,7 @@ async function moveOption(i, to, time) {
   saving = true;
   try {
     poll = await rpc('move_poll_option', { p_code: code, p_creator_key: me, p_option: i,
-      ...(to != null ? { p_to_part: to } : { p_time: time, p_date: partDay(from) || null, p_stop_name: stopKind(o, time) }) });
+      ...(to != null ? { p_to_part: to } : { p_time: time, p_date: from.date || planDayOf() || null, p_stop_name: stopKind(o, time) }) });
     moveOpen = null; threadOpen.clear(); adding = false; lastWrite = Date.now();
   } catch (e) { alert(/could not find the function/i.test(e.message) ? 'Moving places isn’t switched on yet.' : /full|6 parts/.test(e.message) ? 'That’s full: a plan has up to 6 times, each with up to 6 places.' : /plan is set/.test(e.message) ? 'The plan is set, so it can’t change now.' : "Couldn't move that. Try again."); }
   saving = false;
@@ -310,7 +311,12 @@ function more(o, i) {
   const toggle = i != null ? `<button class="detbtn" data-det="${i}" aria-expanded="${open}">${open ? 'Hide details ▴' : 'Details ▾'}</button>` : '';
   return `<div class="more">${toggle}${where ? '📍 ' + esc(where) : ''}${where && map ? ' · ' : ''}${map}${about && !open ? `<br>${about}` : ''}</div>${open ? detailsHtml(o, i) : ''}`;
 }
+// The stops as last drawn on screen: a refresh while someone types updates
+// poll but not the page, so index-based taps must be checked against this.
+const stopSig = x => ((x && x.parts) || []).map(q => `${q.name}@${q.date || ''} ${q.time || ''}`).join('|');
+let shownSig = '', shownParts = [];
 function render() {
+  shownSig = stopSig(poll); shownParts = (poll && poll.parts) || [];
   if (!poll) { app.innerHTML = '<h1>Vote not found</h1><p class="sub">The link may be incomplete. Ask your friend to send it again.</p>'; return; }
   const total = poll.counts.reduce((a, b) => a + b, 0);
   const top = total ? Math.max(...poll.counts) : 0;
@@ -1206,8 +1212,8 @@ async function stopsUnchanged() {
   try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { return true; } finally { checkingStops = false; }
   // Each stop's name, day and time: a stop moved to another time renumbers the rest too.
   const names = x => (x?.parts || []).map(q => `${q.name}@${q.date || ''} ${q.time || ''}`).join('|');
-  if (!fresh || names(fresh) === names(poll)) return true;
-  const what = stopChange(poll && poll.parts, fresh.parts);
+  if (!fresh || names(fresh) === shownSig) return true;
+  const what = stopChange(shownParts, fresh.parts);
   poll = fresh; adding = false; ptOpen.clear(); threadOpen.clear(); moveOpen = null; lastWrite = Date.now(); render();
   alert(`The plan just changed. ${what} Have a look, then try again.`);
   return false;
@@ -1712,7 +1718,8 @@ async function load() {
   try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { fresh = poll ? undefined : null; }
   if (saving || lastWrite >= startedAt) return;
   // A stop added in front moves every stop's number: close an open suggestion list and other-times rows.
-  if (fresh && poll && (fresh.parts || []).length !== (poll.parts || []).length) { threadOpen.clear(); moveOpen = null; if (typeof addPart === 'number') adding = false; ptOpen.clear(); }
+  // Stops added, removed or re-sorted: open boxes and drafts are for stops that moved.
+  if (fresh && poll && stopSig(fresh) !== stopSig(poll)) { threadOpen.clear(); for (const k in threadTyped) delete threadTyped[k]; moveOpen = null; if (typeof addPart === 'number') adding = false; ptOpen.clear(); }
   if (fresh !== undefined) poll = fresh;
   // Don't redraw under someone typing their name, a note or a search, or picking a time.
   if (!addingTime && !typingIn()) render();
