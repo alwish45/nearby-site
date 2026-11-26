@@ -311,7 +311,7 @@ function render() {
           <div class="t">${isFinal ? '✅ ' : i === w && !fixed && !final ? '🏆 ' : ''}${o.own ? '✏️ ' : ''}${esc(o.title)}</div>
           <div class="m">${o.own ? (o.business ? '📍 ' + esc(o.business) : 'Your own stop') : esc([o.business, o.category ? cap(o.category) : '', o.price_level || '', o.city, when].filter(Boolean).join(' · '))}</div>
           ${deal}${fitLn}
-          ${o.added_by ? `<div class="who">Suggested by ${esc(o.added_by)}</div>` : ''}
+          ${o.added_by ? `<div class="who">Suggested by ${esc(o.added_by)}${fixed && !final ? '. It’s in the plan unless the organizer removes it. Want something else? Suggest another option.' : ''}</div>` : ''}
           ${names ? `<div class="who">${names}</div>` : ''}
         </span>${invite || fixed ? '' : `<span class="n">${n}${mine.includes(i) ? ' ✓' : ''}</span>`}</span>
       </button>${more(o, i)}`;
@@ -1034,8 +1034,10 @@ const ptOpen = new Set(); // stops with the other-times row open
 function bestPartTime(pi) {
   const rows = (poll.part_times || []).filter(x => x.part === pi);
   if (!rows.length) return null;
-  const top = Math.max(...rows.map(x => x.n)), lead = rows.filter(x => x.n === top);
-  return lead.length === 1 && lead[0].time !== String(poll.parts[pi].time || '').slice(0, 5) ? lead[0].time : null;
+  const own = String(poll.parts[pi].time || '').slice(0, 5), n = x => x.n + (x.time === own ? 1 : 0);
+  const top = Math.max(own ? 1 : 0, ...rows.map(n));
+  const lead = [...rows.filter(x => n(x) === top).map(x => x.time), ...(own && top === 1 && !rows.some(x => x.time === own) ? [own] : [])];
+  return lead.length === 1 && lead[0] !== own ? lead[0] : null;
 }
 function partTimesHtml(pi, p) {
   const planned = p.time ? String(p.time).slice(0, 5) : null;
@@ -1061,9 +1063,12 @@ function bindPartTimes() {
 }
 // Someone may have added or removed a stop since the last refresh: check the
 // stops are where they were before acting on one by its number.
+let checkingStops = false;
 async function stopsUnchanged() {
+  if (checkingStops) return false;
+  checkingStops = true;
   let fresh = null;
-  try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { return true; }
+  try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { return true; } finally { checkingStops = false; }
   const names = x => (x?.parts || []).map(q => q.name).join('|');
   if (!fresh || names(fresh) === names(poll)) return true;
   poll = fresh; adding = false; ptOpen.clear(); lastWrite = Date.now(); render();
@@ -1166,16 +1171,18 @@ function stepsHtml(sections, mine, final, invite, parted, rsvpShown) {
 // A restaurant's happy hour ("half-price apps") is a meal; only a deal about
 // drinks ("$5 drafts") is Happy hour / Drinks.
 const DRINK_TITLE = /happy hour|\bdrafts?\b|\bpints?\b|\bbeers?\b|\bwines?\b|cocktails?|margaritas?|mimosas?|\bdrinks?\b|\bwells?\b|\bshots?\b|spirits|sangria|\bipa\b/i;
-function stopKind(d) {
+function stopKind(d, time = null) {
   const text = `${tagsOf(d).join(' ')} ${String(d.category || '').toLowerCase()}`, title = String(d.title || '');
+  const meal = () => { if (!time) return 'Dinner'; const m = mins(time); return m < 630 ? 'Breakfast' : m < 900 ? 'Lunch' : 'Dinner'; };
   if (/music|comedy|theater|theatre|sports|concert|karaoke|trivia/.test(text)) return 'Show';
+  if (/coffee|cafe|café|espresso/i.test(`${text} ${title}`) && !/food/.test(text)) return 'Coffee';
   if (/brunch|breakfast/.test(text)) return 'Brunch';
   if (/dessert|ice cream|gelato|donut|cookie|cupcake/i.test(title)) return 'Dessert';
-  if (/food/.test(text) && !DRINK_TITLE.test(title)) return 'Dinner';
+  if (/food/.test(text) && !DRINK_TITLE.test(title)) return meal();
   if (/happy hour/.test(text)) return 'Happy hour';
   if (/drinks|wine|beer|cocktail|bar/.test(text)) return 'Drinks';
   if (/dessert|ice cream|bakery|coffee/.test(text)) return 'Dessert';
-  return /food/.test(text) ? 'Dinner' : null;
+  return /food/.test(text) ? meal() : null;
 }
 function stopHtml() {
   const parts = poll.parts || [];
@@ -1208,7 +1215,7 @@ function addStop(id, where, own = null) {
     }
     poll = await rpc('add_poll_stop', { p_code: code, p_voter_key: me, p_where: where, p_name: myName(),
       ...(own ? { p_title: own.title, p_place: own.place, p_lat: own.lat, p_lng: own.lng } : { p_deal_id: id }),
-      p_stop_name: own ? (OUTDOOR.test(`${own.title} ${own.place || ''}`) ? 'A walk' : own.title.slice(0, 30)) : stopKind(d) || (where === 'before' ? 'Before' : 'After'), p_stop_time: time,
+      p_stop_name: own ? (OUTDOOR.test(`${own.title} ${own.place || ''}`) ? 'A walk' : own.title.slice(0, 30)) : stopKind(d, time) || (where === 'before' ? 'Before' : 'After'), p_stop_time: time,
       p_main_name: kinds.length && kinds.every(k => k && k === kinds[0]) ? kinds[0] : null,
       p_main_time: slot && slot.time ? String(slot.time).slice(0, 5) : null });
     // The new stop's list stays open, so you can suggest other options for it.
@@ -1260,6 +1267,7 @@ function askNameFirst() {
     input.addEventListener('keydown', e => { if (e.key === 'Enter') box.querySelector('#askname-ok').click(); });
     box.querySelector('#askname-skip').addEventListener('click', () => { nameSkipped = true; done(true); });
     box.addEventListener('click', e => { if (e.target === box) done(false); });
+    box.addEventListener('keydown', e => { if (e.key === 'Escape') done(false); });
   });
 }
 
@@ -1268,6 +1276,7 @@ async function vote(i) {
   if (!(await askNameFirst())) return;
   if (saving) return;
   saving = true;
+  if ((poll.parts || []).length && !(await stopsUnchanged())) { saving = false; return; }
   // The typed name, or the one saved earlier (the box is gone once it's saved).
   const name = myName();
   if (name) nameAsk = false; // voting with a name typed saves it
