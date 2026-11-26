@@ -1475,7 +1475,7 @@ async function addOwn(own) {
   if (addPart === 'any') {
     const pick = await askWhen({ title: own.title, business_name: own.title });
     if (!pick) return;
-    if (pick.time) return addStop(null, 'after', own, pick.time, pick.date);
+    if (pick.time) { if (!(await ensureDayOption(pick.date))) return; return addStop(null, 'after', own, pick.time, pick.date); }
     if ((poll.parts || []).length && !(await stopsUnchanged())) return;
     return once(async () => { try {
       poll = await rpc('add_poll_option', { p_code: code, p_voter_key: me, p_name: myName(), ...(pick.vote ? {} : { p_part: pick.part }), p_title: own.title, p_place: own.place, p_lat: own.lat, p_lng: own.lng });
@@ -1562,6 +1562,19 @@ function stopHtml() {
     ${'part_times' in poll ? ownHtml(true) : ''}${picksHtml()}
     <button class="linkbtn" id="stopclose" style="margin-top:8px">Close</button></div>`;
 }
+async function ensureDayOption(date) {
+  if (!date || multiDay() || !(poll.parts || []).length) return true;
+  const opts = dayOptions(), pday = planDayOf();
+  if (opts.includes(date) || (!opts.length && date === pday)) return true;
+  const pl = dayPlanSlot();
+  try {
+    poll = await rpc('add_poll_time', { p_code: code, p_voter_key: me, p_day: date, p_time: pl.time, p_name: myName(), p_planned_day: pl.day, p_planned_time: pl.time });
+    return true;
+  } catch (e) {
+    alert(/6 times/.test(e.message) ? 'This plan already has 6 days to pick from.' : /two months/.test(e.message) ? 'Pick a day in the next two months.' : "Couldn't add that day. Try again.");
+    return false;
+  }
+}
 function addStop(id, where, own = null, at = null, onDate = null) {
   return once(async () => { try {
     const d = own || (nearby || []).find(x => x.deal_id === id) || {};
@@ -1615,6 +1628,7 @@ function askWhen(d) {
     time = base ? pad(addPart === 'before' ? Math.max(300, mins(base) - 90) : Math.min(mins(base) + 120, 1410)) : '19:00';
   }
   if (typeof part === 'number') time = st || String(parts[part].time || time).slice(0, 5);
+  let moreDays = false; // "＋ Another day": the next two weeks as day chips
   let onDate = typeof part === 'number' ? partDay(parts[part]) : addDay || (parts.length ? partDay(addPart === 'before' ? parts[0] : parts[parts.length - 1]) : null);
   if (addDay && part === 'vote') part = null;
   if (addDay && !st) { const same = parts.filter(p => partDay(p) === addDay); time = String((same.length ? same[same.length - 1].time : parts.length ? parts[0].time : '19:00') || '19:00').slice(0, 5); }
@@ -1638,7 +1652,7 @@ function askWhen(d) {
         ${chips ? `<div class="who" style="margin-top:12px;font-weight:800">${parts.length ? 'Same time as' : 'Add it to the vote'}</div>
         <div class="chips" style="padding-top:6px">${chips}</div>` : ''}
         <div class="who" style="margin-top:14px;font-weight:800">Or its own time${parts.length ? ' (a new stop)' : ' (makes it a plan)'}</div>
-        ${dayChoices().length > 1 ? `<div class="chips" style="padding-top:2px">${dayChoices().map(x => `<button class="chip ${!joining && onDate === x ? 'on' : ''}" data-wday="${x}">${esc(day(x))}</button>`).join('')}</div>` : ''}
+        <div class="chips" style="padding-top:2px">${[...new Set([...dayChoices(), ...(onDate ? [onDate] : []), ...(moreDays ? Array.from({ length: 14 }, (_, k) => isoDay(new Date(utahNow().getTime() + k * 864e5))) : [])])].sort().map(x => `<button class="chip ${!joining && onDate === x ? 'on' : ''}" data-wday="${x}">${esc(day(x))}</button>`).join('')}${moreDays ? '' : '<button class="chip" id="when-moredays">＋ Another day</button>'}</div>
         <div class="whenrow"><button class="whenstep" id="when-dn" aria-label="30 minutes earlier">‹</button><span class="whentime ${joining && part !== 'vote' ? 'dim' : ''}">${esc(t12(joining && part !== 'vote' ? shown : time))}</span><button class="whenstep" id="when-up" aria-label="30 minutes later">›</button></div>
         ${off ? `<div class="off" style="text-align:center">${esc(name)} may not be open at ${esc(t12(shown))}</div>` : ''}
         <button class="downbtn" id="when-ok">${part === 'vote' ? 'Add it to the vote' : joining ? `Add as an option at ${esc(t12(shown))}` : `Suggest it at ${esc(t12(time))}`}</button>
@@ -1648,6 +1662,7 @@ function askWhen(d) {
       box.querySelector('#when-dn').addEventListener('click', () => step(-30));
       box.querySelector('#when-up').addEventListener('click', () => step(30));
       box.querySelectorAll('[data-wday]').forEach(b => b.addEventListener('click', () => { onDate = b.dataset.wday; part = null; draw(); }));
+      box.querySelector('#when-moredays')?.addEventListener('click', () => { moreDays = !moreDays; draw(); });
       box.querySelector('#when-ok').addEventListener('click', () => done(part === 'vote' ? { vote: true } : typeof part === 'number' ? { part } : { time, date: onDate }));
       box.querySelector('#when-no').addEventListener('click', () => done(null));
     };
@@ -1662,7 +1677,7 @@ async function addOption(id) {
   const d = (nearby || []).find(x => x.deal_id === id) || { deal_id: id, title: '' };
   const pick = await askWhen(d);
   if (!pick) return;
-  if (pick.time) return addStop(id, 'after', null, pick.time, pick.date);
+  if (pick.time) { if (!(await ensureDayOption(pick.date))) return; return addStop(id, 'after', null, pick.time, pick.date); }
   const target = pick.vote ? null : pick.part;
   if ((poll.parts || []).length && !(await stopsUnchanged())) return;
   // The list stays open so several places can be added in a row (up to 12 in all).
