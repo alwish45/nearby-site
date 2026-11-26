@@ -784,10 +784,10 @@ function priceFrom(d) {
   if (isFree(d)) return 0;
   for (const text of [d.price_info, d.title]) {
     const str = String(text || ''), amounts = [];
-    for (const m of str.matchAll(/\$\s?(\d{1,4}(?:\.\d{1,2})?)(?![\d.])/g)) {
+    for (const m of str.matchAll(/\$\s?((?:\d{1,3}(?:,\d{3})+|\d{1,5})(?:\.\d{1,2})?)(?!\d)/g)) {
       const before = str.slice(Math.max(0, m.index - 6), m.index), after = str.slice(m.index + m[0].length, m.index + m[0].length + 10);
       if (/save\s*$|up to\s*$/i.test(before) || /^\s*(off|discount|credit|value|savings)/i.test(after)) continue;
-      amounts.push(parseFloat(m[1]));
+      amounts.push(parseFloat(m[1].replace(/,/g, '')));
     }
     if (amounts.length) return Math.min(...amounts);
   }
@@ -1279,6 +1279,8 @@ async function load() {
   // A dropped connection keeps the last good results instead of "Vote not found".
   try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { fresh = poll ? undefined : null; }
   if (saving || lastWrite >= startedAt) return;
+  // A stop added in front moves every stop's number: close an open suggestion list and other-times rows.
+  if (fresh && poll && (fresh.parts || []).length !== (poll.parts || []).length) { if (typeof addPart === 'number') adding = false; ptOpen.clear(); }
   if (fresh !== undefined) poll = fresh;
   // Don't redraw under someone typing their name, a note or a search, or picking a time.
   if (!addingTime && !['name', 'note', 'find', 'zday', 'phone', 'owntitle', 'ownplace'].includes(document.activeElement && document.activeElement.id)) render();
