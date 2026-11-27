@@ -3,7 +3,15 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
 <title>You’re invited · near.by</title>
+<meta property="og:url" content="https://alwish45.github.io/nearby-site/vote.html">
+<meta property="og:image" content="https://alwish45.github.io/nearby-site/img/share.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" href="img/favicon.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <meta property="og:title" content="You’re invited: help make the plan 🗓️">
 <meta property="og:description" content="See the plan, vote on places and times, or suggest your own. No app or account needed.">
 <meta name="description" content="See the plan, vote on places and times, or suggest your own. No app or account needed.">
@@ -97,7 +105,7 @@
   .face:first-child { margin-left:0; }
   .people .m { font-size:14px; }
   .wx { color:#4a453d; font-size:14px; margin:-2px 0 6px; text-align:left; }
-  .summary { background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:12px; margin:0 0 12px; text-align:left; }
+  .summary { overflow-wrap:anywhere; background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:12px; margin:0 0 12px; text-align:left; }
   .summary b { font-size:16px; }
   .summary .linkbtn { display:block; }
   .final { background:#eefaf1; border:1.5px solid #9fd8b0; border-radius:14px; padding:14px; margin:0 0 12px; text-align:left; }
@@ -144,7 +152,7 @@
   .zoom-row .chips { flex:1; padding-bottom:4px; }
   .zstep { flex:none; width:34px; height:34px; border-radius:50%; font:inherit; font-size:18px; font-weight:800; background:#fff; border:1.5px solid var(--line); cursor:pointer; }
   .zstep:disabled { opacity:.35; cursor:default; }
-  .linkbtn { background:none; border:0; font:inherit; font-weight:800; color:#c2410c; padding:12px 0; min-height:44px; cursor:pointer; text-align:left; }
+  .linkbtn { overflow-wrap:anywhere; background:none; border:0; font:inherit; font-weight:800; color:#c2410c; padding:12px 0; min-height:44px; cursor:pointer; text-align:left; }
   .pick .about { color:#2b2722; font-size:13px; line-height:1.35; margin-top:3px; }
   .thumb.icon { display:flex; align-items:center; justify-content:center; font-size:26px; background:var(--soft); }
   #find { display:block; width:100%; box-sizing:border-box; font:inherit; font-size:16px; border:1.5px solid var(--line); border-radius:12px; padding:11px 12px; margin:0 0 8px; background:#fff; }
@@ -189,6 +197,11 @@ const API = 'https://vieoqoczhqbcxpflyjcp.supabase.co/rest/v1/rpc/';
 const KEY = 'sb_publishable_nxsW5dUJNZJJf-gjGzfHLg_hxUXa9RU';
 const code = (new URLSearchParams(location.search).get('p') || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const app = document.getElementById('app');
+// near.by isn't on Google Play yet: Android phones get a note, not an App Store page.
+if (/Android/i.test(navigator.userAgent)) {
+  const ga = document.getElementById('getapp');
+  if (ga) { ga.removeAttribute('href'); ga.setAttribute('aria-disabled', 'true'); ga.textContent = 'near.by is on iPhone now. Android is coming soon'; ga.style.opacity = '0.85'; ga.style.cursor = 'default'; }
+}
 
 function voterKey() {
   try {
@@ -241,7 +254,7 @@ function moveHtml(o, i, pi, p) {
   const pd = partDay(p);
   const others = poll.parts.map((q, j) => j === pi ? '' : `<button class="chip" data-moveto="${i}|${j}">${showDays() ? esc(wday(partDay(q))) + ' ' : ''}${q.time ? esc(t12(q.time)) : esc(q.name)}</button>`).join('');
   const taken = new Set(poll.parts.filter(q => partDay(q) === pd).map(q => q.time));
-  const near = (p.time ? ALL_TIMES.filter(t => !taken.has(t) && Math.abs(mins(t) - mins(p.time)) <= 240) : ALL_TIMES).filter(t => !gonePast(pd, t));
+  const near = (p.time ? ALL_TIMES.filter(t => !taken.has(t) && Math.abs(nmins(t) - nmins(p.time)) <= 240) : ALL_TIMES).filter(t => !gonePast(pd, t));
   const only = poll.options.filter(x => x.part === pi).length === 1; // re-times the stop itself
   const fresh = poll.parts.length < 6 || only ? near.map(t => `<button class="chip" data-movenew="${i}|${t}">${esc(t12(t))}</button>`).join('') : '';
   return `<div class="movebox"><div class="who" style="margin:0">Move ${esc(o.business || o.title)} to${others ? ' another stop' : ''}…</div>
@@ -335,6 +348,7 @@ const stopSig = x => ((x && x.parts) || []).map(q => `${q.name}@${q.date || ''} 
 let shownSig = '', shownParts = [];
 function render() {
   shownSig = stopSig(poll); shownParts = (poll && poll.parts) || [];
+  if (!poll && loadFailed) { app.innerHTML = '<h1>Couldn’t load the plan</h1><p class="sub">Check your connection. We’ll keep trying every few seconds.</p><button class="linkbtn" onclick="load()">Try again now</button>'; return; }
   if (!poll) { app.innerHTML = '<h1>Plan not found</h1><p class="sub">The link may be incomplete. Ask your friend to send it again.</p>'; return; }
   // Typing your own stop or a search when the nearby list arrives: keep typing there after the redraw.
   const act = document.activeElement, keep = act && ['owntitle', 'ownplace', 'find'].includes(act.id) ? { id: act.id, s: act.selectionStart, e: act.selectionEnd } : null;
@@ -380,10 +394,20 @@ function render() {
     const t = Math.max(0, ...idxs.map(i => poll.counts[i] || 0)), l = idxs.filter(i => (poll.counts[i] || 0) === t);
     return t > 0 && l.length === 1 ? l[0] : -1;
   }) : [];
+  // Ended without being locked in: say so plainly, with how the votes stood.
+  if (fullyClosed && !final) {
+    const standing = poll.options.map((o, i) => ({ o, n: poll.counts[i] || 0 })).filter(x => x.n).sort((a, b) => b.n - a.n).slice(0, 5);
+    app.innerHTML = `<h1>${esc(poll.title || 'Plan')}</h1>
+      <div class="summary"><b>This plan has ended</b><div class="who" style="margin:4px 0 0">It closed without being locked in${planDayOf() ? `. It was for ${esc(day(planDayOf()))}` : ''}.</div>
+      ${standing.length ? `<div class="who" style="margin:8px 0 0">Most votes: ${standing.map(x => `${esc(x.o.title)} (${x.n})`).join(', ')}</div>` : ''}</div>`;
+    return;
+  }
   // "Are you in?" shows once there's somewhere to be in for.
   const rsvpShown = rsvpOn && (go >= 0 || parted || !!final || invite);
   app.innerHTML = `
     <h1>${esc(poll.title || (invite ? 'Who’s in?' : 'Where should we go?'))}</h1>
+    ${!isOrg() && !poll.closed ? '<p class="who" style="text-align:left;margin:-6px 0 6px">A friend is planning something on near.by and wants your say.</p>' : ''}
+    ${notUtahZone() ? '<p class="who" style="text-align:left;margin:0 0 8px">🕐 Times are Utah time (MT).</p>' : ''}
     ${peopleHtml()}
     ${poll.is_creator && !poll.closed && !poll.final ? '<button class="downbtn" id="invitemore" style="margin:4px 0 12px">📣 Send the link to friends</button>' : ''}
     <p class="sub">${invite
@@ -398,6 +422,7 @@ function render() {
       : !poll.closed && savedName ? `<p class="voting-as">Voting as <b>${esc(savedName)}</b> · <button id="chname">Change</button></p>` : ''}
     ${parted ? nightHtml(final ? final.parts : partWin, people, !!final, pastDay) : ''}
     ${isOrg() && !final && !poll.closed && poll.options.length ? `<div class="lockbox"><button class="lockbtn" id="lockin">🔒 Lock it in</button><div class="who" style="margin:6px 0 0">When the group has decided: makes it the final plan (the winning place at each time, and the day and times most can make), stops the voting and tells everyone.</div></div>` : ''}
+    ${isPotluckPoll() ? bringHtml(fullyClosed) : ''}
     ${parted && rsvpShown ? rsvpHtml(final, fullyClosed) : ''}
     ${stepsHtml(sections, mine, final, invite, parted, rsvpShown)}
     ${parted && !final && !poll.closed ? '<h2 class="sec">Help shape it</h2>' : ''}
@@ -436,7 +461,7 @@ function render() {
       }).join('');
       const open = adding && addPart === pi;
       const sug = poll.can_add && !final && (!p || idxs.length < 6)
-        ? `<button class="suggest" data-suggest="${pi ?? ''}">${open ? 'Done' : p ? `＋ Suggest another place${p.time ? ` for ${esc(t12(p.time))}` : ''}` : '＋ Suggest another place'}</button>${open ? (p && 'part_times' in poll ? ownHtml(/walk|park|hang|something to do|activity/i.test(p.name)) : '') + picksHtml() : ''}` : '';
+        ? `<button class="suggest" data-suggest="${pi ?? ''}">${open ? 'Done' : p ? `＋ Suggest another place${p.time ? ` for ${esc(t12(p.time))}` : ''}` : '＋ Suggest another place'}</button>${open ? (p && 'part_times' in poll ? ownHtml(/walk|park|hang|something to do|activity/i.test(p.name), /^potluck\b/i.test(p.name || '')) : '') + picksHtml() : ''}` : '';
       return head + opts + sug + (p ? threadHtml(pi, p) : '');
     }).join('')}
     ${poll.how && !invite && !parted && !final && foodVote() ? `<div class="box"><h2>How should we do it?</h2><div class="how">${[['dine_in', '🍽️ Dine in'], ['pickup', '🛍️ Pickup'], ['delivery', '🚗 Delivery']].map(([k, l]) => `<button data-how="${k}" class="${poll.my_how === k ? 'on' : ''}" ${fullyClosed ? 'disabled' : ''}>${l}<b>${poll.how[k] || 0}</b></button>`).join('')}</div><div class="who">A head count for the group. Check with the place that it offers pickup or delivery.</div></div>` : ''}
@@ -503,6 +528,7 @@ function render() {
   document.getElementById('lockin')?.addEventListener('click', () => lockIn());
   document.getElementById('unlockbtn')?.addEventListener('click', unlock);
   app.querySelectorAll('[data-ticket]').forEach(b => b.addEventListener('click', () => toggleTicket(b.dataset.ticket)));
+  bindBring();
   document.getElementById('actmore')?.addEventListener('click', () => { actAll = !actAll; render(); });
   document.getElementById('stopclose')?.addEventListener('click', () => { stopOpen = false; adding = false; addPart = null; addDay = null; render(); });
   document.body.classList.toggle('has-fab', !!document.getElementById('fab'));
@@ -589,7 +615,7 @@ function nightHtml(winners, people, locked = false, pastDay = false) {
   }).join('');
   const located = stops.filter(o => o && o.lat);
   const route = !showDays() && located.length >= 2 ? `https://www.google.com/maps/dir/?api=1&origin=${located[0].lat},${located[0].lng}&destination=${located[located.length - 1].lat},${located[located.length - 1].lng}${located.length > 2 ? '&waypoints=' + encodeURIComponent(located.slice(1, -1).map(o => `${o.lat},${o.lng}`).join('|')) : ''}` : '';
-  const dayPlan = poll.parts.some(p => p.time && String(p.time).slice(0, 5) < '16:00');
+  const dayPlan = poll.parts.some(p => p.time && !isNight(p.time) && String(p.time).slice(0, 5) < '16:00'); // 12:30am is night
   return `<div class="box"><h2>${altDays() ? '🗓️ The plan for each day · ' + [...new Set(poll.parts.map(partDay))].sort().map(wday).join(' or ') : multiDay() ? '🗓️ The plan · ' + esc(day(partDay(poll.parts[0]))) + ' – ' + esc(day(partDay(poll.parts[poll.parts.length - 1]))) : `${dayPlan ? '☀️ Your day' : '🌃 Your night'} · ${pastDay ? 'was ' + esc(day(pday)) : pday === today ? (dayPlan ? 'Today' : 'Tonight') : esc(day(pday))}`}${locked ? ' · set' : ''}</h2>${showDays() ? [...new Set(poll.parts.map(partDay))].sort().filter(d => d >= today).map(d => weatherHtml(d, false, wday(d))).join('') : pastDay ? '' : weatherHtml(pday, dayPlan)}${rows}
     ${route ? `<div style="text-align:left;margin-top:8px"><a href="${route}" target="_blank" rel="noopener" style="color:#c2410c;font-weight:700;text-decoration:none">🗺️ The whole route in Maps ›</a></div>` : ''}
     ${locked || pastDay ? '' : standFooter()}</div>`;
@@ -679,6 +705,8 @@ function closedAllDay(hours, date) {
 }
 // true on, false not on, null can't tell (no times and no hours listed).
 function onAt(d, ds, t) {
+  // Midnight to 5am on a plan's day is that night: the next calendar day's early hours.
+  if (mins(t) < 300) ds = nextIso(ds);
   const date = dateAt(ds, t), n = mins(t);
   const yest = new Date(date); yest.setDate(date.getDate() - 1);
   const s0 = d.start_time ? mins(d.start_time) : null, e0 = d.end_time ? mins(d.end_time) : null;
@@ -728,10 +756,10 @@ const fitLine = r => [r.on.length ? `✅ ${r.on.map(placeOf).join(', ')}` : '', 
   r.unknown.length ? `❔ ${r.unknown.map(placeOf).join(', ')} (hours not listed)` : ''].filter(Boolean).join(' · ');
 // Up to 3 times that day when the most places are on.
 const TIME_CHOICES = Array.from({ length: 29 }, (_, i) => toT(480 + i * 30));
-// For a plan's parts (brunch at 7am, late night at 11pm), as in the app.
-const ALL_TIMES = Array.from({ length: 36 }, (_, i) => toT(360 + i * 30));
+// For a plan's parts (brunch at 7am, late night up to 2am), as in the app.
+const ALL_TIMES = Array.from({ length: 41 }, (_, i) => toT((360 + i * 30) % 1440)); // 6am to 2am that night
 // Today, a time that's already gone by isn't offered (a 9am chip at 12:30).
-const gonePast = (ds, t) => ds === isoDay(utahNow()) && mins(t) <= utahNow().getHours() * 60 + utahNow().getMinutes();
+const gonePast = (ds, t) => (isNight(t) ? nextIso(ds) : ds) === isoDay(utahNow()) && mins(t) <= utahNow().getHours() * 60 + utahNow().getMinutes();
 function goodTimes(ds) {
   const os = (poll.options || []).map(timed);
   const scored = TIME_CHOICES.map((t, i) => { const names = os.filter(o => onAt(o, ds, t) === true).map(placeOf); return { t, i, on: names.length, names }; })
@@ -743,7 +771,7 @@ function goodTimes(ds) {
 }
 function nearestOn(o, ds, t) {
   const ok = ALL_TIMES.filter(c => onAt(o, ds, c) === true);
-  return ok.length ? ok.reduce((b, c) => (Math.abs(mins(c) - mins(t)) < Math.abs(mins(b) - mins(t)) ? c : b)) : null;
+  return ok.length ? ok.reduce((b, c) => (Math.abs(nmins(c) - nmins(t)) < Math.abs(nmins(b) - nmins(t)) ? c : b)) : null;
 }
 // Under the day and time pickers: times that fit, and who's on at the picked time.
 function fitFormHtml(ds, t) {
@@ -795,12 +823,12 @@ function zoomStart(win) {
   return { day: d, center: t, time: t };
 }
 function timesAround(ds, center, place) {
-  const os = (poll.options || []).map(timed), c = mins(center), cur = toT(c);
-  const list = new Set(ALL_TIMES.filter(t => Math.abs(mins(t) - c) <= 90));
+  const os = (poll.options || []).map(timed), c = nmins(center), cur = toT(c % 1440);
+  const list = new Set(ALL_TIMES.filter(t => Math.abs(nmins(t) - c) <= 90));
   list.add(cur);
   const near = place && onAt(place, ds, cur) === false ? nearestOn(place, ds, cur) : null;
   if (near) list.add(near);
-  return [...list].filter(t => !gonePast(ds, t)).sort((a, b) => mins(a) - mins(b)).map(t => ({ t, of: os.length, on: os.filter(o => onAt(o, ds, t) === true).length, placeOn: place ? onAt(place, ds, t) : null }));
+  return [...list].filter(t => !gonePast(ds, t)).sort((a, b) => nmins(a) - nmins(b)).map(t => ({ t, of: os.length, on: os.filter(o => onAt(o, ds, t) === true).length, placeOn: place ? onAt(place, ds, t) : null }));
 }
 function zoomHtml(win) {
   if (poll.closed) return '';
@@ -985,6 +1013,12 @@ const HEALTH_TEXT = /\b(gym|workout|work out|fitness|personal train|crossfit|pil
 const CATERING_TEXT = /thanksgiving|chefsgiving|catering|caterer|holiday (dinner|meal|feast|buffet)|christmas (eve |day )?(dinner|brunch|buffet|feast)|new year'?s (eve |day )?(dinner|brunch|buffet)|easter (brunch|dinner|buffet)|pre-?order|to[- ]?go|take[- ]?away|take[- ]?out|turkey dinner|feast (to go|package)|family meal pack|party (trays?|platters?)|\b(pies?|desserts?) (order|pre)/i;
 const CATERING_DESC = /catering|caterer|party trays?|meals? to-?go|order your (thanksgiving|holiday)/i;
 const mins = t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + (m || 0); };
+// After midnight, up to 2am, a stop is that night's (12:30am on Friday's plan is
+// Saturday 12:30am on the calendar), sorted after 11:59pm; as in the app.
+const isNight = t => !!t && mins(t) < 300;
+const nmins = t => mins(t) + (isNight(t) ? 1440 : 0);
+const nkey = t => { const m = nmins(t); return `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`; };
+const nextIso = ds => { const [y, mo, d] = ds.split('-').map(Number); const x = new Date(Date.UTC(y, mo - 1, d + 1)); return x.toISOString().slice(0, 10); };
 function goodPick(d) {
   const tags = (d.category_tags || []).map(t => String(t).toLowerCase());
   if (tags.includes('loyalty') || tags.includes('catering')) return false;
@@ -1159,7 +1193,7 @@ function redrawFeed() {
   body.innerHTML = feedBody();
   bindFeed();
 }
-const typingIn = () => { const id = (document.activeElement && document.activeElement.id) || ''; return ['name', 'note', 'find', 'zday', 'phone', 'owntitle', 'ownplace'].includes(id) || id.startsWith('note-'); };
+const typingIn = () => { const id = (document.activeElement && document.activeElement.id) || ''; return ['name', 'note', 'find', 'zday', 'phone', 'owntitle', 'ownplace', 'bringitem'].includes(id) || id.startsWith('note-'); };
 const agoText = at => { const m = Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 60000));
   return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} hr ago` : day(String(at).slice(0, 10)); };
 const noteRow = c => `<div class="cnote"><div><b>${c.mine ? 'You' : esc(c.name)}</b> <span class="who">${esc(agoText(c.at))}</span>${c.mine ? ` <button class="del" data-del="${Number(c.id)}">Delete</button>` : ''}</div><div>${esc(c.body)}</div></div>`;
@@ -1250,9 +1284,12 @@ async function postNote(part = null) {
   render();
 }
 async function deleteNote(id) {
-  if (!confirm('Delete your note?')) return;
-  try { poll = await rpc('delete_poll_comment', { p_code: code, p_voter_key: me, p_id: id }); lastWrite = Date.now(); render(); }
+  if (saving || !confirm('Delete your note?')) return;
+  saving = true;
+  try { poll = await rpc('delete_poll_comment', { p_code: code, p_voter_key: me, p_id: id }); lastWrite = Date.now(); }
   catch { alert("Couldn't delete that. Try again."); }
+  saving = false;
+  render();
 }
 function myName() {
   const el = document.getElementById('name');
@@ -1403,13 +1440,13 @@ function partTimesHtml(pi, p) {
   const planned = p.time ? String(p.time).slice(0, 5) : null;
   const rows = (poll.part_times || []).filter(x => x.part === pi);
   const at = t => rows.find(x => x.time === t);
-  const list = [...new Set([...(planned ? [planned] : []), ...rows.map(x => x.time)])].sort();
+  const list = [...new Set([...(planned ? [planned] : []), ...rows.map(x => x.time)])].sort((a, b) => nkey(a).localeCompare(nkey(b)));
   const best = bestPartTime(pi);
   const chips = list.map(t => {
     const r = at(t), lead = t === best || (!best && t === planned && rows.length);
     return `<button class="chip ${lead ? 'fit' : ''} ${r && r.mine ? 'on' : ''}" data-ptime="${pi}|${t}" aria-pressed="${!!(r && r.mine)}">${r && r.mine ? '✓ ' : ''}${esc(t12(t))}${t === planned && !(r && r.mine) ? '?' : ''}${r ? ` <span class="c">${r.n}</span>` : ''}</button>`;
   }).join('');
-  const others = ptOpen.has(pi) ? ALL_TIMES.filter(t => !list.includes(t) && !gonePast(partDay(p), t) && (!planned || Math.abs(mins(t) - mins(planned)) <= 180))
+  const others = ptOpen.has(pi) ? ALL_TIMES.filter(t => !list.includes(t) && !gonePast(partDay(p), t) && (!planned || Math.abs(nmins(t) - nmins(planned)) <= 180))
     .map(t => `<button class="chip" data-ptime="${pi}|${t}">${esc(t12(t))}</button>`).join('') : '';
   const who = rows.length ? `<div class="fit-line">${esc(list.filter(at).map(t => `${t12(t)}: ${at(t).names.join(', ')}`).join(' · '))}</div>` : '';
   return `<div class="ptimes"><div class="who" style="margin:0">🕒 ${rows.length ? 'Tap every time that works for you' : planned ? `Can you make ${esc(t12(planned))}? Tap it, or suggest another time` : 'When? Suggest a time'}</div>
@@ -1468,7 +1505,14 @@ function saveOwnDraft() {
   const t = document.getElementById('owntitle'), p = document.getElementById('ownplace');
   if (t) ownDraft = { t: t.value, p: p ? p.value : '' };
 }
-function ownHtml(outdoors) {
+function ownHtml(outdoors, potluck = false) {
+  // A potluck's options are friends' places.
+  if (potluck) return `<div class="ownbox">
+    <div class="who" style="margin:0">🏠 Offer your place</div>
+    <div class="chips" style="padding-top:6px"><button class="chip ${ownDraft.t === 'My place' ? 'on' : ''}" data-ownidea="My place">🏠 My place</button></div>
+    <input id="owntitle" maxlength="60" autocomplete="off" placeholder="Whose place? e.g. Sam’s place" value="${esc(ownDraft.t)}">
+    <input id="ownplace" maxlength="60" autocomplete="off" placeholder="Address (optional), for directions" value="${esc(ownDraft.p)}">
+    <button class="downbtn" id="ownadd">Add it</button></div>`;
   const parks = outdoors ? `<div class="who" style="margin:0">🌳 Parks and walks</div><div class="chips" style="padding-top:6px">${PARKS.map((x, i) => `<button class="chip" data-park="${i}">＋ ${esc(x[0])}</button>`).join('')}</div>` : '';
   return `<div class="ownbox">${parks}
     <div class="who" style="margin:0">✏️ Or add your own</div>
@@ -1652,7 +1696,7 @@ function askWhen(d) {
   if (addDay && !st) { const same = parts.filter(p => partDay(p) === addDay); time = String((same.length ? same[same.length - 1].time : parts.length ? parts[0].time : '19:00') || '19:00').slice(0, 5); }
   const ds = poll.plan_day && poll.plan_day >= planToday() ? poll.plan_day : isoDay(utahNow());
   // Today, not a time that's already gone by: the next half hour instead.
-  const fresh = t => { if (!gonePast(onDate || ds, t)) return t; const n = utahNow(); return pad(Math.min(Math.ceil((n.getHours() * 60 + n.getMinutes() + 1) / 30) * 30, 1410)); };
+  const fresh = t => { if (!gonePast(onDate || ds, t)) return t; const n = utahNow(); return pad(Math.min(Math.ceil((n.getHours() * 60 + n.getMinutes() + 1) / 30) * 30, isNight(t) ? 120 : 1410)); };
   time = fresh(time);
   const name = d.business_name || d.title;
   return new Promise(resolve => {
@@ -1679,7 +1723,7 @@ function askWhen(d) {
         <button class="downbtn" id="when-ok">${part === 'vote' ? 'Add it to the vote' : joining ? `Add as an option at ${esc(t12(shown))}` : `Suggest it at ${esc(t12(time))}`}</button>
         <button class="linkbtn" id="when-no" style="display:block;margin:10px auto 0">Cancel</button></div>`;
       box.querySelectorAll('[data-wpart]').forEach(b => b.addEventListener('click', () => { const v = b.dataset.wpart === 'vote' ? 'vote' : Number(b.dataset.wpart); part = part === v ? null : v; draw(); }));
-      const step = n => { const from = typeof part === 'number' ? String(parts[part].time || time).slice(0, 5) : time; time = fresh(pad(Math.min(Math.max(mins(from) + n, 300), 1410))); part = null; draw(); };
+      const step = n => { const from = typeof part === 'number' ? String(parts[part].time || time).slice(0, 5) : time; time = fresh(pad(Math.min(Math.max(nmins(from) + n, 300), 1560) % 1440)); part = null; draw(); }; // 5am to 2am that night
       box.querySelector('#when-dn').addEventListener('click', () => step(-30));
       box.querySelector('#when-up').addEventListener('click', () => step(30));
       box.querySelectorAll('[data-wday]').forEach(b => b.addEventListener('click', () => { onDate = b.dataset.wday; time = fresh(time); part = null; draw(); }));
@@ -1792,6 +1836,58 @@ async function setRsvp(st) {
     if (nameAsk && myName()) nameAsk = false;
     try { poll = await rpc('set_down', { p_code: code, p_voter_key: me, p_down: next === 'in', p_name: myName(), p_status: next }); render(); }
     catch (e) { alert(/closed/.test(e.message) ? 'This vote has closed.' : "Couldn't save that. Try again."); }
+  });
+}
+// Potlucks: "Who's bringing what" (scripts/add_potluck.sql in the app repo).
+// A stop named Potluck has friends' places as options; the list sits apart
+// from get_poll and loads with each refresh.
+const isPotluckPoll = () => !!poll && (poll.parts || []).some(p => /^potluck\b/i.test(p.name || ''));
+const BRING_CHIPS = [['main', 'Main', /\bmain|lasagna|chili|casserole|ham|turkey|chicken|brisket|pulled pork|enchilada|pasta/i],
+  ['side', 'Side', /\bside|potato|funeral potatoes|rolls?\b|bread|beans|corn|mac/i], ['salad', 'Salad', /salad|veggie|fruit/i],
+  ['dessert', 'Dessert', /dessert|pie|cake|cookie|brownie|ice cream|jello|jell-o|cupcake/i],
+  ['drinks', 'Drinks', /drink|soda|juice|lemonade|water|beer|wine|punch|coffee/i], ['plates', 'Plates & cups', /plate|cup|napkin|utensil|fork|silverware|ice\b/i]];
+let bring = null, bringOff = false, bringDraft = '';
+async function loadBring() {
+  if (!code || !isPotluckPoll() || bringOff) return;
+  try { bring = await rpc('get_poll_bring', { p_code: code, p_voter_key: me }); }
+  catch (e) { if (/could not find the function/i.test(e.message || '')) bringOff = true; return; }
+  if (!typingIn() && !saving) render();
+}
+function bringHtml(fullyClosed) {
+  if (bringOff) return '';
+  const list = Array.isArray(bring) ? bring : [];
+  const coming = ((poll.rsvp || {}).in || []).length;
+  const people = new Set(list.map(b => (b.mine ? '\u0000me' : b.name || 'Someone'))).size;
+  const line = [coming ? `${coming} coming` : '', people ? `${people} bringing something` : 'Nobody has signed up to bring anything yet'].filter(Boolean).join(' · ');
+  const n = Object.fromEntries(BRING_CHIPS.map(([k]) => [k, 0]));
+  list.forEach(b => { const c = BRING_CHIPS.find(x => x[2].test(b.item || '')); if (c) n[c[0]]++; });
+  return `<div class="down" id="step-bring"><h2>🥘 Who’s bringing what</h2>
+    <div class="m">${bring == null ? 'Loading…' : esc(line)}</div>
+    ${list.map(b => `<div class="who bringrow" style="display:flex;gap:8px;align-items:center;margin:4px 0"><span style="flex:1;overflow-wrap:anywhere">${esc(b.mine ? 'You' : b.name)} · ${esc(b.item)}</span>${b.mine || isOrg() ? `<button class="linkbtn" data-bringdel="${esc(b.id)}" aria-label="Take ${esc(b.item)} off the list" style="padding:0 6px">✕</button>` : ''}</div>`).join('')}
+    ${fullyClosed ? '' : `<div class="chips" style="padding-top:6px">${BRING_CHIPS.map(([k, l]) => `<button class="chip ${bringDraft === l ? 'on' : ''}" data-bringchip="${esc(l)}">${esc(l)}${n[k] ? ` · ${n[k]}` : ''}</button>`).join('')}</div>
+    <input id="bringitem" maxlength="60" autocomplete="off" placeholder="I’m bringing… e.g. Funeral potatoes" value="${esc(bringDraft)}" aria-label="What you’re bringing">
+    <button class="downbtn" id="bringadd">Add</button>`}</div>`;
+}
+function bindBring() {
+  app.querySelectorAll('[data-bringchip]').forEach(b => b.addEventListener('click', () => { bringDraft = b.dataset.bringchip; render(); document.getElementById('bringitem')?.focus(); }));
+  const inp = document.getElementById('bringitem');
+  if (inp) { inp.addEventListener('input', () => { bringDraft = inp.value; }); inp.addEventListener('keydown', e => { if (e.key === 'Enter') addBring(); }); }
+  document.getElementById('bringadd')?.addEventListener('click', addBring);
+  app.querySelectorAll('[data-bringdel]').forEach(b => b.addEventListener('click', () => removeBring(Number(b.dataset.bringdel))));
+}
+async function addBring() {
+  const item = (document.getElementById('bringitem')?.value || bringDraft).trim();
+  if (!item) { document.getElementById('bringitem')?.focus(); return; }
+  if (!(await askNameFirst())) return;
+  return once(async () => {
+    try { bring = await rpc('add_poll_bring', { p_code: code, p_voter_key: me, p_name: myName(), p_item: item.slice(0, 60) }); bringDraft = ''; render(); }
+    catch (e) { alert(/full/.test(e.message) ? 'The list is full.' : /closed/.test(e.message) ? 'This plan has closed.' : /too many/.test(e.message) ? 'That’s a lot at once. Try again in a few minutes.' : 'Couldn’t add that. Try again.'); }
+  });
+}
+async function removeBring(id) {
+  return once(async () => {
+    try { bring = await rpc('remove_poll_bring', { p_code: code, p_voter_key: me, p_id: id }); render(); }
+    catch { alert('Couldn’t take that off. Try again.'); }
   });
 }
 function rsvpHtml(final, fullyClosed) {
@@ -2079,7 +2175,9 @@ function planCalLinks(only = null) {
   const date = only || f.day || poll.plan_day || isoDay(utahNow());
   const rows = picks.map((i, k) => { const o = poll.options[i] || {}, p = Array.isArray(f.parts) ? poll.parts[k] : null; return { o, p, d: p ? partDay(p) : date, t: (p && p.time) || f.time || (o.start_time ? String(o.start_time).slice(0, 5) : null) }; });
   if (only) for (let x = rows.length - 1; x >= 0; x--) if (rows[x].d !== only) rows.splice(x, 1);
-  const times = rows.map(r => r.t).filter(Boolean).map(t => String(t).slice(0, 5)).sort();
+  // Times before 4am are the night's end (the next day), so a 12:30am stop sorts last.
+  const late = nmins; // 12:30am is that night
+  const times = rows.map(r => r.t).filter(Boolean).map(t => String(t).slice(0, 5)).sort((a, b) => late(a) - late(b));
   const pad = n => String(n).padStart(2, '0');
   const at = (hhmm, plus) => { const [y, m, d] = date.split('-').map(Number), [h, mi] = hhmm.split(':').map(Number); const t = new Date(Date.UTC(y, m - 1, d, h, mi + plus)); return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}T${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}:00`; };
   const title = (poll.title || 'Plans') + (only && multiDay() ? ` (${wday(only)})` : ''), e = encodeURIComponent;
@@ -2091,10 +2189,12 @@ function planCalLinks(only = null) {
     return { google: `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${e(title)}&dates=${date.replace(/-/g, '')}/${next.replace(/-/g, '')}&details=${e(details)}&location=${e(loc)}`,
       outlook: `https://outlook.live.com/calendar/0/action/compose?path=%2Fcalendar%2Faction%2Fcompose&rru=addevent&subject=${e(title)}&allday=true&startdt=${date}&enddt=${next}&body=${e(details)}&location=${e(loc)}` };
   }
-  const len = mins(times[times.length - 1]) - mins(times[0]) + 120;
-  const s0 = at(times[0], 0), s1 = at(times[0], len), c = x => x.replace(/[-:]/g, '');
+  const len = late(times[times.length - 1]) - late(times[0]) + 120, shift = late(times[0]) >= 1440 ? 1440 : 0;
+  const s0 = at(times[0], shift), s1 = at(times[0], shift + len), c = x => x.replace(/[-:]/g, '');
+  // Outlook reads a bare time in the viewer's zone: give it Utah's offset for that moment.
+  const mt = x => { const [y, m, d, h, mi] = x.split(/[-T:]/).map(Number); const n = new Date(Date.UTC(y, m - 1, d, h + 7, mi)); const dst = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', timeZoneName: 'short' }).format(n).includes('MDT'); return x + (dst ? '-06:00' : '-07:00'); };
   return { google: `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${e(title)}&dates=${c(s0)}/${c(s1)}&ctz=America/Denver&details=${e(details)}&location=${e(loc)}`,
-    outlook: `https://outlook.live.com/calendar/0/action/compose?path=%2Fcalendar%2Faction%2Fcompose&rru=addevent&subject=${e(title)}&startdt=${e(s0)}&enddt=${e(s1)}&body=${e(details)}&location=${e(loc)}` };
+    outlook: `https://outlook.live.com/calendar/0/action/compose?path=%2Fcalendar%2Faction%2Fcompose&rru=addevent&subject=${e(title)}&startdt=${e(mt(s0))}&enddt=${e(mt(s1))}&body=${e(details)}&location=${e(loc)}` };
 }
 // A calendar file with one entry per stop (two hours each, Utah time).
 function downloadIcs() {
@@ -2106,7 +2206,8 @@ function downloadIcs() {
   const ev = picks.map((i, k) => {
     const o = poll.options[i] || {}, p = Array.isArray(f.parts) ? poll.parts[k] : null;
     const t = (p && p.time) || f.time || (o.start_time ? String(o.start_time).slice(0, 5) : null);
-    const dd = p && p.date ? p.date.replace(/-/g, '') : d0;
+    // A 12:30am stop is that night's: on the calendar it's the next day.
+    const dd0 = p && p.date ? p.date : (f.day || poll.plan_day || isoDay(utahNow())), dd = (t && isNight(t) ? nextIso(dd0) : dd0).replace(/-/g, '');
     const when = t ? [`DTSTART;TZID=America/Denver:${dd}T${t.replace(':', '')}00`, `DURATION:PT2H`] : [`DTSTART;VALUE=DATE:${dd}`];
     return ['BEGIN:VEVENT', `UID:${code}-${k}@near.by`, `DTSTAMP:${stamp}`, ...when,
       `SUMMARY:${fold(p ? stopLabel(p, o) : placeName(o))}`, `LOCATION:${fold(o.own ? o.business || '' : [o.business, o.city].filter(Boolean).join(', '))}`,
@@ -2132,12 +2233,20 @@ function foodVote() {
   });
 }
 
+// The viewer's clock isn't on Utah time right now (a friend out of town).
+function notUtahZone() {
+  try {
+    const f = z => new Intl.DateTimeFormat('en-US', { timeZone: z, hour: 'numeric', minute: 'numeric', hour12: false }).format(new Date());
+    return f(Intl.DateTimeFormat().resolvedOptions().timeZone) !== f('America/Denver');
+  } catch { return false; }
+}
+let loadFailed = false; // the first load didn't get through (weak signal), not a missing plan
 async function load() {
   if (!code) { render(); return; }
   const startedAt = Date.now();
   let fresh;
   // A dropped connection keeps the last good results instead of "Vote not found".
-  try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { fresh = poll ? undefined : null; }
+  try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); loadFailed = false; } catch { fresh = poll ? undefined : null; loadFailed = !poll; }
   if (saving || lastWrite >= startedAt) return;
   // A stop added in front moves every stop's number: close an open suggestion list and other-times rows.
   // Stops added, removed or re-sorted: open boxes and drafts are for stops that moved.
@@ -2146,6 +2255,7 @@ async function load() {
   // Don't redraw under someone typing their name, a note or a search, or picking a time.
   if (!addingTime && !typingIn()) render();
   loadInfo();
+  loadBring();
 }
 load();
 setInterval(load, 10000);

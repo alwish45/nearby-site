@@ -3,10 +3,17 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>near.by — Make a plan with friends, then go</title>
-<meta property="og:title" content="near.by — Make a plan with friends, then go">
+<title>near.by — Things to do, deals and plans with friends in Salt Lake City</title>
+<meta property="og:url" content="https://alwish45.github.io/nearby-site/">
+<meta property="og:image" content="https://alwish45.github.io/nearby-site/img/share.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" href="img/favicon.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<meta property="og:title" content="near.by — Things to do, deals and plans with friends in Salt Lake City">
 <meta property="og:description" content="Pick a few things happening near you, send one link, and your friends tick the times and vote on places. Free, across Salt Lake, Ogden and Park City.">
-<meta name="description" content="Propose a plan from what's happening near you, invite friends to pick the times and places together, then go. Happy hours, specials, shows and events from Ogden to Park City, Utah.">
+<meta name="description" content="Propose a plan from what's happening near you, invite friends to pick the times and places together, then go. Happy hours, specials, shows and events in Salt Lake City, from Ogden to Park City, Utah.">
 <style>
   :root { --bg:#faf8f4; --ink:#14110d; --muted:#6b655b; --accent:#e8542a; --line:#ece8e0; }
   * { box-sizing:border-box; }
@@ -37,7 +44,7 @@
 <main>
   <div class="logo">near<span>.</span>by</div>
   <h1>Make a plan. Get your people in. Go.</h1>
-  <p class="lead">Pick a few things happening near you, send one link, and your friends tick the times and vote on places. No app needed for them. Free, from Ogden to Park City.</p>
+  <p class="lead">Pick a few things happening near you, send one link, and your friends tick the times and vote on places. No app needed for them. Free, across Salt Lake City, from Ogden to Park City.</p>
   <a class="cta" href="https://apps.apple.com/us/app/id6812937568">Start a plan, free</a>
 
   <h2>How a plan comes together</h2>
@@ -84,5 +91,15 @@
     </div>
   </footer>
 </main>
+<script>
+// near.by is on iPhone now; on Android phones the App Store link would be a dead end.
+if (/Android/i.test(navigator.userAgent)) document.querySelectorAll('a[href*="apps.apple.com"]').forEach(a => {
+  const note = document.createElement('span');
+  note.className = a.className; note.style.background = '#5c564d'; note.style.cursor = 'default';
+  note.textContent = 'Coming soon to Android';
+  note.setAttribute('role', 'note');
+  a.replaceWith(note);
+});
+</script>
 </body>
 </html>
