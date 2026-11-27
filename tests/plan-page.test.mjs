@@ -1062,3 +1062,23 @@ describe('Potluck plans', () => {
     });
   });
 });
+
+describe('stops after midnight (up to 2am) are that night’s', () => {
+  const late = () => makePoll({ title: 'Friday night', parts: [{ name: 'Drinks', time: '21:00' }, { name: 'Late night', time: '00:30' }],
+    options: [opt({ business: 'Bar X', part: 0, deal_id: 'n1' }), opt({ business: 'Diner', part: 1, deal_id: 'n2' })] });
+  test('shows 12:30am as part of the night, after 9pm', async () => {
+    await withPlan(late(), { name: 'Me' }, async t => {
+      const text = await t.page.textContent('body');
+      assert.ok(text.includes('12:30am'), 'shows 12:30am');
+      assert.ok(text.includes('Your night'), 'a night out, not a day plan');
+      assert.ok(text.indexOf('9pm') < text.indexOf('12:30am'), '9pm before 12:30am');
+    });
+  });
+  test('time rules: night order, the calendar day, and what has passed', async () => {
+    await withPlan(late(), { now: '2026-11-28T01:10:00-07:00' }, async t => {
+      const r = await t.page.evaluate(() => [nkey('00:30'), nextIso('2026-11-27'), ALL_TIMES.at(-1), ALL_TIMES.includes('00:30'), ALL_TIMES.includes('02:30'),
+        gonePast('2026-11-27', '00:30'), gonePast('2026-11-27', '01:30'), gonePast('2026-11-28', '00:30')]);
+      assert.deepEqual(r, ['24:30', '2026-11-28', '02:00', true, false, true, false, false]);
+    });
+  });
+});
