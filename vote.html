@@ -139,6 +139,9 @@
   .stand.ok { color:#1f7a3d; } .stand.open { color:#9a3412; }
   .standfoot { margin-top:8px; padding:10px 12px; border-radius:12px; font-weight:700; font-size:15px; text-align:left; }
   .standfoot.open { background:#fff1e6; color:#9a3412; } .standfoot.ok { background:#e9f7ee; color:#1f7a3d; }
+  .nwhat { font-size:15px; font-weight:700; margin-top:3px; }
+  .nabout { color:var(--muted); font-size:14px; line-height:1.4; margin-top:4px; }
+  .night-row .details { margin:8px 0 4px; }
   .night-row .ntime { width:62px; flex:none; font-weight:800; color:#c2410c; }
   .zoom-row { display:flex; align-items:center; gap:6px; }
   .zoom-row .chips { flex:1; padding-bottom:4px; }
@@ -287,7 +290,7 @@ async function moveOption(i, to, time) {
 }
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const linkOf = u => (/^https?:\/\//i.test(u || '') ? u : u ? `https://${u}` : '');
-function detailsHtml(o, i) {
+function detailsHtml(o, i, idp = 'det') {
   const d = (info && info[o.deal_id]) || {}, b = d.businesses || {};
   const days = (d.recurring_days || o.recurring_days || []).map(Number);
   const st = d.start_time || o.start_time, en = d.end_time || o.end_time;
@@ -300,7 +303,7 @@ function detailsHtml(o, i) {
   const img = /^https:\/\//.test(d.image_url || o.image_url || '') ? `<img src="${esc(d.image_url || o.image_url)}" alt="" loading="lazy" onerror="this.remove()">` : '';
   const row = (icon, html) => (html ? `<div class="drow"><span>${icon}</span><span>${html}</span></div>` : '');
   const maps = o.lat ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent([o.business, b.address].filter(Boolean).join(', '))}` : '';
-  return `<div class="details" id="det-${i}">${img}
+  return `<div class="details" id="${idp}-${i}">${img}
     <div class="t">${esc(o.title)}</div>
     ${d.price_info || o.price_info ? `<span class="deal">${esc(d.price_info || o.price_info)}</span>` : ''}
     ${d.description ? `<p class="m" style="margin:8px 0">${esc(d.description)}</p>` : ''}
@@ -467,6 +470,7 @@ function render() {
   app.querySelectorAll('[data-move]').forEach(b => b.addEventListener('click', () => { const i = Number(b.dataset.move); moveOpen = moveOpen === i ? null : i; render(); }));
   app.querySelectorAll('[data-moveto]').forEach(b => b.addEventListener('click', () => { const [i, j] = b.dataset.moveto.split('|').map(Number); moveOption(i, j, null); }));
   app.querySelectorAll('[data-movenew]').forEach(b => b.addEventListener('click', () => { const [i, t] = b.dataset.movenew.split('|'); moveOption(Number(i), null, t); }));
+  app.querySelectorAll('[data-ndet]').forEach(b => b.addEventListener('click', () => { const i = Number(b.dataset.ndet); if (nightOpen.has(i)) nightOpen.delete(i); else nightOpen.add(i); render(); }));
   app.querySelectorAll('[data-det]').forEach(b => b.addEventListener('click', () => { const i = Number(b.dataset.det); if (openDetails.has(i)) openDetails.delete(i); else openDetails.add(i); render(); }));
   app.querySelectorAll('[data-det-go]').forEach(b => b.addEventListener('click', () => {
     const i = Number(b.dataset.detGo); openDetails.add(i); render();
@@ -550,6 +554,24 @@ function standFooter() {
     : isOrg() ? 'Every stop has a pick. Lock it in below when the group has decided.' : 'Every stop has a pick. The organizers lock it in.';
   return `<div class="standfoot ${open || dayOpenAlt ? 'open' : 'ok'}">${dayLine ? `<div>${esc(dayLine)}</div>` : ''}<div>${esc(msg)}</div></div>`;
 }
+// Under a stop in the night card: what the deal or event is (when the stop
+// reads as the place), its price, where, a line about it, and the full details.
+const nightOpen = new Set();
+function nightAbout(o, w, pastDay) {
+  const d = (info && info[o.deal_id]) || {}, b = d.businesses || {};
+  const title = d.title || o.title || '', label = stopLabel(null, o);
+  const what = title && !label.toLowerCase().includes(title.toLowerCase()) ? `<div class="nwhat">${esc(title)}</div>` : '';
+  const price = d.price_info || o.price_info || '';
+  const tag = price && !/^\s*tickets\s*$/i.test(price) && price.toLowerCase() !== title.toLowerCase() ? `<span class="deal">${esc(price)}</span>` : '';
+  const st = d.start_time || o.start_time, en = d.end_time || o.end_time;
+  const hrs = st && (d.deal_type || o.deal_type) !== 'limited_run' ? `${t12(st)}${en ? '–' + t12(en) : ''}` : '';
+  const street = /\d/.test(b.address || '') ? b.address.split(',')[0] : '';
+  const where = [cap(b.category || o.category), street || o.city, hrs].filter(Boolean).join(' · ');
+  const open = nightOpen.has(w);
+  const about = !open && d.description ? esc(d.description.length > 140 ? d.description.slice(0, 137).trimEnd() + '…' : d.description) : '';
+  const toggle = pastDay ? '' : `<button class="detbtn" data-ndet="${w}" aria-expanded="${open}">${open ? 'Hide details ▴' : 'Details ▾'}</button>`;
+  return `${what}${tag}${where ? `<div class="who" style="margin:4px 0 0">${esc(where)}</div>` : ''}${about ? `<div class="nabout">${about}</div>` : ''}${toggle ? `<div style="margin-top:6px">${toggle}</div>` : ''}${open ? detailsHtml(o, w, 'ndet') : ''}`;
+}
 // A plan's night: each part's time and the place in the lead, with directions.
 function nightHtml(winners, people, locked = false, pastDay = false) {
   const today = isoDay(utahNow()), pday = planDayOf() || today;
@@ -574,6 +596,7 @@ function nightHtml(winners, people, locked = false, pastDay = false) {
       ${o && o.own && o.business ? `<div class="who">📍 ${esc(o.business)}</div>` : ''}
       ${gone ? `<div class="off">⏰ ${esc(t12(p.time))} has already passed today</div>` : ''}
       ${off ? `<div class="off">⚠️ Not on at ${esc(t12(p.time))} (${esc(whyOff(t, pd))})${near ? `. Closest: ${esc(t12(near))}` : ''}</div>` : ''}
+      ${o && !o.own ? nightAbout(o, w, pastDay) : ''}
       ${o && o.own ? (ownMap(o) ? `<a href="${ownMap(o)}" target="_blank" rel="noopener">Directions ›</a>` : '') : o && o.lat ? `<a href="${gmaps(o)}" target="_blank" rel="noopener">Directions ›</a>` : ''}
       ${pastDay ? '' : ticketsHtml(o)}
     </span></div>`;
