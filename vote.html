@@ -63,7 +63,8 @@
   .how button { flex:1; font:inherit; font-weight:700; font-size:14px; background:#fff; border:1.5px solid var(--line); border-radius:12px; padding:10px 4px; cursor:pointer; color:inherit; }
   .how button.on { background:var(--ink); color:#faf8f4; border-color:var(--ink); }
   .how b { display:block; font-size:18px; }
-  .fab { position:fixed; right:16px; bottom:calc(16px + env(safe-area-inset-bottom)); z-index:20; font:inherit; font-size:16px; font-weight:800; color:#fff; background:var(--ink); border:0; border-radius:999px; padding:13px 18px; box-shadow:0 4px 14px rgba(0,0,0,.22); cursor:pointer; }
+  .fab.away { opacity:0; pointer-events:none; transform:translateY(20px); }
+  .fab { transition:opacity .2s, transform .2s; position:fixed; right:16px; bottom:calc(16px + env(safe-area-inset-bottom)); z-index:20; font:inherit; font-size:16px; font-weight:800; color:#fff; background:var(--ink); border:0; border-radius:999px; padding:13px 18px; box-shadow:0 4px 14px rgba(0,0,0,.22); cursor:pointer; }
   body.has-fab { padding-bottom:84px; }
   .suggest { display:block; width:100%; font:inherit; font-weight:800; color:#c2410c; background:none; border:1.5px dashed var(--accent); border-radius:14px; padding:13px; margin:0 0 10px; cursor:pointer; }
   .pick { display:flex; align-items:center; gap:10px; width:100%; text-align:left; font:inherit; color:inherit; background:#fff; border:1px dashed var(--line); border-radius:12px; padding:10px 12px; margin:0 0 8px; }
@@ -233,9 +234,10 @@ async function loadInfo() {
   ids.forEach(id => asked.add(id));
   try {
     const r = await fetch(`${API.replace('rpc/', '')}deals?id=in.(${ids.join(',')})&select=id,title,description,price_info,image_url,source_url,deal_type,recurring_days,valid_from,valid_until,start_time,end_time,businesses(category,address,city,hours,phone,website,menu_url,google_rating,google_rating_count,price_level,logo_url)`, { headers: { apikey: KEY } });
-    for (const d of (r.ok ? await r.json() : [])) info[d.id] = d;
-    if (!addingTime && !typingIn()) render();
-  } catch {}
+    if (!r.ok) throw new Error('deals');
+    for (const d of await r.json()) info[d.id] = d;
+    if (!addingTime && !typingIn() && !document.querySelector('.askname')) render();
+  } catch { ids.forEach(id => asked.delete(id)); }
 }
 const cap = s => (s ? s.charAt(0).toUpperCase() + s.slice(1) : '');
 // Details open under a place (by option index): what the deal is, when it runs,
@@ -283,6 +285,8 @@ async function removeStop(pi) {
 async function moveOption(i, to, time) {
   if (saving) return;
   const o = poll.options[i], from = poll.parts[o.part];
+  if (to != null && poll.options.filter(x => x.part === o.part).length === 1
+    && !confirm(`That leaves the ${from.time ? t12(from.time) : from.name} stop empty, so it comes out of the plan (its time ticks too; its comments move to the notes for the whole plan). Move it?`)) return;
   if (!(await stopsUnchanged())) return;
   saving = true;
   try {
@@ -341,8 +345,28 @@ function more(o, i) {
 // poll but not the page, so index-based taps must be checked against this.
 const stopSig = x => ((x && x.parts) || []).map(q => `${q.name}@${q.date || ''} ${q.time || ''}`).join('|');
 let shownSig = '', shownParts = [];
+let drawnSig = null, firstOpened = false;
 function render() {
   shownSig = stopSig(poll); shownParts = (poll && poll.parts) || [];
+  // Stops added, removed or re-sorted (by anyone): what's unfolded, the open
+  // details and comment "about" chips were kept by number, so they'd now point
+  // at other stops and places. Start those fresh.
+  const optSig = poll ? (poll.options || []).map(o => `${o.part}:${o.deal_id || o.title}`).join('|') : '';
+  if (drawnSig != null && drawnSig !== shownSig + '#' + optSig) { openParts.clear(); openDetails.clear(); nightOpen.clear(); for (const k in threadAbout) delete threadAbout[k]; }
+  drawnSig = poll ? shownSig + '#' + optSig : null;
+  // First look: the first stop still waiting on you (a time to tick or places
+  // to vote on) starts open; the rest stay folded.
+  if (poll && !firstOpened && (poll.parts || []).length && !poll.final && !poll.closed) {
+    firstOpened = true;
+    const waiting = poll.parts.findIndex((_, pi) => {
+      const idxs = poll.options.map((o, i) => (o.part === pi ? i : -1)).filter(i => i >= 0);
+      const timeOpen = 'part_times' in poll && !(poll.part_times || []).some(r => r.part === pi && r.mine);
+      const voteOpen = idxs.length > 1 && !(poll.my_votes || []).some(i => idxs.includes(i));
+      return timeOpen || voteOpen;
+    });
+    if (waiting >= 0) openParts.add(waiting);
+  }
+  if (!poll && loadFailed) { app.innerHTML = '<h1>Couldn’t load the plan</h1><p class="sub">Check your connection. Trying again…</p>'; return; }
   if (!poll) { app.innerHTML = '<h1>Plan not found</h1><p class="sub">The link may be incomplete. Ask your friend to send it again.</p>'; return; }
   const total = poll.counts.reduce((a, b) => a + b, 0);
   const top = total ? Math.max(...poll.counts) : 0;
@@ -375,8 +399,13 @@ function render() {
   const rsvpOn = !!poll.rsvp;
   const fullyClosed = poll.closed && new Date(poll.closes_at).getTime() < Date.now() - 864e5;
   const parted = (poll.parts || []).length > 0;
+  // Lock it in sits up top once every stop has a pick; until then it waits under the stops.
+  const canLock = isOrg() && !poll.final && !poll.closed && poll.options.length > 0;
+  const lockTop = canLock && (!parted || poll.parts.every((_, pi) => stopStanding(pi).ok));
+  const lockLow = canLock && !lockTop;
   const pday = planDayOf() || isoDay(utahNow());
-  const pastDay = !!planDayOf() && planDayOf() < planToday();
+  const lastDay = (poll.parts || []).length ? [...new Set(poll.parts.map(partDay))].sort().pop() : planDayOf();
+  const pastDay = !!lastDay && lastDay < planToday();
   const sections = parted ? poll.parts.map((p, pi) => ({ p, pi, idxs: poll.options.map((o, i) => (o.part === pi ? i : -1)).filter(i => i >= 0) }))
     : [{ p: null, pi: null, idxs: poll.options.map((_, i) => i) }];
   const partWin = parted ? sections.map(({ idxs }) => {
@@ -389,7 +418,7 @@ function render() {
   app.innerHTML = `
     <h1>${esc(poll.title || (invite ? 'Who’s in?' : 'Where should we go?'))}</h1>
     ${peopleHtml()}
-    ${poll.is_creator && !poll.closed && !poll.final ? '<button class="downbtn" id="invitemore" style="margin:4px 0 12px">📣 Send the link to friends</button>' : ''}
+    ${isOrg() && !poll.closed && !poll.final ? '<button class="downbtn" id="invitemore" style="margin:4px 0 12px">📣 Send the link to friends</button>' : ''}
     <p class="sub">${invite
       ? (poll.closed ? 'This invite has closed.' : rsvpShown ? 'Tap “I’m in” if you’re coming. No app needed.' : 'Tap “I’m down” if you’re in. No app needed.')
       : `${poll.closed ? 'This vote has closed.' : final ? 'The plan is set. Say if you’re in below.' : (poll.parts || []).length ? (poll.parts.some((_, pi) => poll.options.filter(o => o.part === pi).length > 1) ? 'Vote on places, tick the times you can make, and say if you’re in. No app needed.' : 'Here’s the plan. Say if you’re in and tick the times you can make, or suggest something else. No app needed.') : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
@@ -401,7 +430,7 @@ function render() {
       <div class="namerow"><input id="name" maxlength="30" autocomplete="given-name" placeholder="Your first name" value="${esc(savedName)}"><button id="savename">Save</button></div></div>`
       : !poll.closed && savedName ? `<p class="voting-as">Voting as <b>${esc(savedName)}</b> · <button id="chname">Change</button></p>` : ''}
     ${parted ? nightHtml(final ? final.parts : partWin, people, !!final, pastDay) : ''}
-    ${isOrg() && !final && !poll.closed && poll.options.length ? `<div class="lockbox"><button class="lockbtn" id="lockin">🔒 Lock it in</button><div class="who" style="margin:6px 0 0">When the group has decided: makes it the final plan (the winning place at each time, and the day and times most can make), stops the voting and tells everyone.</div></div>` : ''}
+    ${lockTop ? `<div class="lockbox"><button class="lockbtn" id="lockin">🔒 Lock it in</button><div class="who" style="margin:6px 0 0">When the group has decided: makes it the final plan (the winning place at each time, and the day and times most can make), stops the voting and tells everyone.</div></div>` : ''}
     ${parted && rsvpShown ? rsvpHtml(final, fullyClosed) : ''}
     ${stepsHtml(sections, mine, final, invite, parted, rsvpShown)}
     ${parted && !final && !poll.closed ? '<h2 class="sec">Help shape it</h2>' : ''}
@@ -416,7 +445,7 @@ function render() {
       const hop = p && pi > 0 && partDay(poll.parts[pi - 1]) === partDay(p) ? hopText(poll.options.filter(o => o.part === pi - 1), poll.options.filter(o => o.part === pi)) : null;
       const dhead = (hop ? `<div class="hopbetween">${esc(hop)}</div>` : '') + (p && showDays() && (pi === 0 || partDay(poll.parts[pi - 1]) !== partDay(p)) ? `<h3 class="dayhead">📅 ${esc(longDay(partDay(p)))}${partDay(p) >= isoDay(utahNow()) ? weatherHtml(partDay(p)) : ''}</h3>` : '');
       const unfolded = !p || partOpen(pi, idxs);
-      const head = dhead + (p ? `<div class="part-head" id="step-part-${pi}"><button class="pfold" data-fold="${pi}" aria-expanded="${unfolded}"><span class="pnum">${pi + 1}</span><span class="pname">${p.time ? esc(t12(p.time)) : esc(p.name)}</span><span class="pstate">${final ? '✅ Set' : fixed ? (poll.options[idxs[0]].added_by ? `💡 From ${esc(poll.options[idxs[0]].added_by)}` : '') : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span><span class="pchev">${unfolded ? '▴' : '▾'}</span></button>${editing && p && isOrg() && !final && !poll.closed && poll.parts.length > 1 ? `<button class="rmstop" data-rmstop="${pi}" aria-label="Remove this stop">✕</button>` : ''}</div>` : '');
+      const head = dhead + (p ? `<div class="part-head" id="step-part-${pi}"><button class="pfold" data-fold="${pi}" aria-expanded="${unfolded}"><span class="pnum">${pi + 1}</span><span class="pname">${p.time ? esc(t12(p.time)) : esc(p.name)}</span><span class="pstate">${final ? '✅ Set' : fixed ? (poll.options[idxs[0]].added_by ? `💡 From ${esc(poll.options[idxs[0]].added_by)}` : '') : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span>${editing ? '' : `<span class="pchev">${unfolded ? '▴' : '▾'}</span>`}</button>${editing && p && isOrg() && !final && !poll.closed && poll.parts.length > 1 ? `<button class="rmstop" data-rmstop="${pi}" aria-label="Remove this stop">✕</button>` : ''}</div>` : '');
       if (!unfolded) return head + foldedHtml(pi, p, idxs, w, fixed, final);
       const ptimes = p && 'part_times' in poll && !final && !poll.closed ? partTimesHtml(pi, p) : '';
       const opts = idxs.map(i => {
@@ -451,12 +480,13 @@ function render() {
     ${lead.length > 1 && !parted && !poll.closed && !final ? '<p class="sub" style="text-align:center;color:#9a3412;font-weight:700">It’s a tie. One more vote settles it.</p>' : ''}
     ${parted && rsvpShown ? '' : rsvpShown ? rsvpHtml(final, fullyClosed) : (go >= 0 || parted) ? `<div class="down">
       <h2>${(poll.down || []).length ? `🙌 ${poll.down.length} ${poll.down.length === 1 ? 'person is' : 'people are'} down` : 'Who’s down?'}</h2>
-      <div class="m">${(poll.down || []).length ? esc(poll.down.join(', ')) : parted ? 'Tap if you’re in for the night.' : `Tap if you’re in for ${esc(poll.options[go].business || 'the winner')}.`}</div>
+      <div class="m">${(poll.down || []).length ? esc(poll.down.join(', ')) : parted ? 'Tap if you’re in for the night.' : `Tap if you’re in for ${esc(placeName(poll.options[go]) || 'it')}.`}</div>
       <button class="downbtn ${poll.i_am_down ? 'on' : ''}" id="downbtn" ${fullyClosed ? 'disabled' : ''}>${poll.i_am_down ? '✓ You’re down (tap to undo)' : 'I’m down 🙌'}</button>
     </div>` : ''}
     ${activityHtml()}
-    ${notesHtml(askName || savedName ? null : '', typedNote)}
+    ${notesHtml(askName || savedName || (joined && !poll.my_name && !poll.closed) ? null : '', typedNote)}
     ${stopHtml()}
+    ${lockLow ? `<div class="lockbox"><button class="lockbtn" id="lockin2">🔒 Lock it in</button><div class="who" style="margin:6px 0 0">Some stops are still open. When the group has decided: makes it the final plan (the winning place at each time, and the day and times most can make), stops the voting and tells everyone.</div></div>` : ''}
     ${fabOn() ? '<button class="fab" id="fab" aria-label="Suggest a place or your own event">＋ Suggest or add an event</button>' : ''}
     ${go >= 0 && !final && poll.options[go].lat ? `<a class="cta" href="https://maps.google.com/?daddr=${poll.options[go].lat},${poll.options[go].lng}">Directions to ${invite ? '' : 'the leader: '}${esc(poll.options[go].business)}</a>` : ''}
     ${/iPhone|iPad|Android/i.test(navigator.userAgent) ? `<a class="cta" style="background:#fff;color:#14110d;border:1.5px solid #ece8e0" href="nearby://vote?p=${code}">Open in the near.by app</a>` : ''}`;
@@ -481,7 +511,7 @@ function render() {
   app.querySelectorAll('[data-movenew]').forEach(b => b.addEventListener('click', () => { const [i, t] = b.dataset.movenew.split('|'); moveOption(Number(i), null, t); }));
   app.querySelectorAll('[data-ndet]').forEach(b => b.addEventListener('click', () => { const i = Number(b.dataset.ndet); if (nightOpen.has(i)) nightOpen.delete(i); else nightOpen.add(i); render(); }));
   app.querySelectorAll('[data-det]').forEach(b => b.addEventListener('click', () => { const i = Number(b.dataset.det); if (openDetails.has(i)) openDetails.delete(i); else openDetails.add(i); render(); }));
-  app.querySelectorAll('[data-fold]').forEach(b => b.addEventListener('click', () => { const pi = Number(b.dataset.fold); if (openParts.has(pi)) { openParts.delete(pi); threadOpen.delete(pi); poll.options.forEach((o, i) => { if (o.part === pi) openDetails.delete(i); }); if (adding && addPart === pi) adding = false; } else openParts.add(pi); render(); document.getElementById(`step-part-${pi}`)?.scrollIntoView({ block: 'nearest' }); }));
+  app.querySelectorAll('[data-fold]').forEach(b => b.addEventListener('click', () => { const pi = Number(b.dataset.fold); if (editing) return; if (b.getAttribute('aria-expanded') === 'true') { if (moveOpen != null && poll.options[moveOpen] && poll.options[moveOpen].part === pi) moveOpen = null; openParts.delete(pi); threadOpen.delete(pi); poll.options.forEach((o, i) => { if (o.part === pi) openDetails.delete(i); }); if (adding && addPart === pi) adding = false; } else openParts.add(pi); render(); document.getElementById(`step-part-${pi}`)?.scrollIntoView({ block: 'nearest' }); }));
   app.querySelectorAll('[data-det-go]').forEach(b => b.addEventListener('click', () => {
     const i = Number(b.dataset.detGo); openDetails.add(i); render();
     document.getElementById(`det-${i}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -505,12 +535,16 @@ function render() {
   app.querySelectorAll('[data-planday]').forEach(b => b.addEventListener('click', () => { openAdd(b.dataset.planday); document.getElementById('step-addstop')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }));
   app.querySelectorAll('[data-bringfrom]').forEach(b => b.addEventListener('click', () => { const [f, t] = b.dataset.bringfrom.split('|'); bringOver(f, t); }));
   document.getElementById('stopopen')?.addEventListener('click', () => openAdd());
-  document.getElementById('lockin')?.addEventListener('click', lockIn);
+  document.getElementById('lockin')?.addEventListener('click', () => lockIn());
+  document.getElementById('lockin2')?.addEventListener('click', () => lockIn());
   document.getElementById('unlockbtn')?.addEventListener('click', unlock);
   app.querySelectorAll('[data-ticket]').forEach(b => b.addEventListener('click', () => toggleTicket(b.dataset.ticket)));
   document.getElementById('actmore')?.addEventListener('click', () => { actAll = !actAll; render(); });
   document.getElementById('stopclose')?.addEventListener('click', () => { stopOpen = false; adding = false; addPart = null; addDay = null; render(); });
   document.body.classList.toggle('has-fab', !!document.getElementById('fab'));
+  // The floating button steps aside while the page's own add button, the
+  // "Are you in?" buttons or a text box is on screen, so it never covers them.
+  fabWatch();
   document.getElementById('fab')?.addEventListener('click', () => { openAdd(null); document.getElementById('step-addstop')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); });
   app.querySelectorAll('[data-dayadd]').forEach(b => b.addEventListener('click', async () => { const pl = dayPlanSlot(); dayOpen = false; await suggestTime(b.dataset.dayadd, pl.time, pl); }));
   document.getElementById('daymore')?.addEventListener('click', () => { dayOpen = !dayOpen; render(); });
@@ -561,7 +595,7 @@ function standFooter() {
   const dayOpenAlt = altDays() && (() => { const c = poll.time_counts || [], top = Math.max(0, ...c); return !top || c.filter(x => x === top).length > 1; })();
   const msg = dayOpenAlt ? `Still open: the day${open ? ` and ${open} stop${open === 1 ? '' : 's'}` : ''}. Tick the days that work for you.`
     : open ? `Still open: ${open} stop${open === 1 ? '' : 's'}. Vote or suggest to settle ${open === 1 ? 'it' : 'them'}.`
-    : isOrg() ? 'Every stop has a pick. Lock it in below when the group has decided.' : 'Every stop has a pick. The organizers lock it in.';
+    : isOrg() ? 'Every stop has a pick. Lock it in below when the group has decided.' : 'Every stop has a pick. The organizer will lock in the plan and let everyone know.';
   return `<div class="standfoot ${open || dayOpenAlt ? 'open' : 'ok'}">${dayLine ? `<div>${esc(dayLine)}</div>` : ''}<div>${esc(msg)}</div></div>`;
 }
 // Under a stop in the night card: what the deal or event is (when the stop
@@ -1613,6 +1647,15 @@ function stopKind(d, time = null) {
 }
 // The floating "＋ Suggest or add an event": anyone on the link can suggest a
 // place or their own event before or after the plan, from anywhere on the page.
+let fabObs = null;
+function fabWatch() {
+  if (fabObs) fabObs.disconnect();
+  const fab = document.getElementById('fab');
+  if (!fab || !('IntersectionObserver' in window)) return;
+  const seen = new Set();
+  fabObs = new IntersectionObserver(es => { es.forEach(e => (e.isIntersecting ? seen.add(e.target) : seen.delete(e.target))); fab.classList.toggle('away', seen.size > 0); });
+  app.querySelectorAll('#stopopen, #step-addstop, .down, .namecard, textarea').forEach(el => fabObs.observe(el));
+}
 const fabOn = () => !!poll && poll.can_add && !poll.final && !poll.closed && (poll.parts || []).length < 6 && !(adding && addPart === 'any');
 function stopHtml() {
   const parts = poll.parts || [];
@@ -1958,7 +2001,7 @@ const isOrg = () => !!(poll && (poll.is_organizer ?? poll.is_creator));
 // Lock it in: for a plan for each day, the day first (its stops stay, the other
 // days' come out); then a place for each stop (the leader, or pick one where
 // it's tied), the times the group picked, and the day.
-async function lockIn() {
+async function lockIn(kept = null) {
   if (!isOrg() || saving) return;
   const parts = poll.parts || [];
   if (parts.length && altDays()) {
@@ -1971,7 +2014,7 @@ async function lockIn() {
     try { for (const pi of drop) poll = await rpc('remove_poll_stop', { p_code: code, p_creator_key: me, p_part: pi }); }
     catch { alert("Couldn't take the other day's stops out. Try again."); render(); return; }
     render();
-    return lockIn();
+    return lockIn(win);
   }
   const final = {};
   if (parts.length) {
@@ -2001,13 +2044,17 @@ async function lockIn() {
   }
   // The day: one day's plan keeps its day; else the day most people can make (pick if tied), else the plan's.
   const ds = [...new Set(parts.map(partDay))];
-  if (ds.length === 1 && parts.some(q => q.date) && dayOptions().includes(ds[0])) final.day = ds[0]; // a day kept from a plan for each day
+  if (kept && ds.length === 1 && ds[0] === kept) final.day = kept; // a day kept from a plan for each day
   else if (!multiDay() && Array.isArray(poll.times) && poll.times.length) {
     const c = poll.time_counts || [], top = Math.max(0, ...c), lead = c.map((x, i) => (x === top && top ? i : -1)).filter(i => i >= 0);
     if (lead.length === 1) final.day = poll.times[lead[0]].day;
     else if (lead.length > 1) { const d = await askPick('Which day?', 'These days are tied. Pick one.', lead.map(i => ({ v: poll.times[i].day, label: longDay(poll.times[i].day) })), 'Use this day'); if (!d) return; final.day = d; }
   }
   if (!final.day && poll.plan_day) final.day = poll.plan_day;
+  // One place, no stops: keep the time most people can make too.
+  if (!parts.length) { const sl = leadSlot(); if (sl && sl.time && (!final.day || sl.day === final.day)) { final.day = final.day || sl.day; final.time = String(sl.time).slice(0, 5); } }
+  // The picks above are by number: make sure nobody changed the stops meanwhile.
+  if (parts.length && !(await stopsUnchanged())) return;
   if (!confirm('Lock it in? Voting stops and everyone is told the plan.')) return;
   await once(async () => { try { poll = await rpc('lock_poll', { p_code: code, p_creator_key: me, p_final: final }); render(); toast('It’s set · everyone’s been told'); }
     catch (e) { alert(/only the/.test(e.message) ? 'Only the organizers can lock it in.' : "Couldn't lock it in. Try again."); } });
@@ -2117,19 +2164,20 @@ function foodVote() {
   });
 }
 
+let loadFailed = false;
 async function load() {
   if (!code) { render(); return; }
   const startedAt = Date.now();
   let fresh;
   // A dropped connection keeps the last good results instead of "Vote not found".
-  try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { fresh = poll ? undefined : null; }
+  try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); loadFailed = false; } catch { fresh = poll ? undefined : null; loadFailed = !poll; }
   if (saving || lastWrite >= startedAt) return;
   // A stop added in front moves every stop's number: close an open suggestion list and other-times rows.
   // Stops added, removed or re-sorted: open boxes and drafts are for stops that moved.
   if (fresh && poll && stopSig(fresh) !== stopSig(poll)) { threadOpen.clear(); for (const k in threadTyped) delete threadTyped[k]; moveOpen = null; if (typeof addPart === 'number') adding = false; ptOpen.clear(); }
   if (fresh !== undefined) poll = fresh;
   // Don't redraw under someone typing their name, a note or a search, or picking a time.
-  if (!addingTime && !typingIn()) render();
+  if (!addingTime && !typingIn() && !document.querySelector('.askname')) render();
   loadInfo();
 }
 load();
