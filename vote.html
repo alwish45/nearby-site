@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
 <title>You’re invited · near.by</title>
 <meta property="og:title" content="You’re invited: help make the plan 🗓️">
 <meta property="og:description" content="See the plan, vote on places and times, or suggest your own. No app or account needed.">
@@ -97,7 +98,7 @@
   .face:first-child { margin-left:0; }
   .people .m { font-size:14px; }
   .wx { color:#4a453d; font-size:14px; margin:-2px 0 6px; text-align:left; }
-  .summary { background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:12px; margin:0 0 12px; text-align:left; }
+  .summary { overflow-wrap:anywhere; background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:12px; margin:0 0 12px; text-align:left; }
   .summary b { font-size:16px; }
   .summary .linkbtn { display:block; }
   .final { background:#eefaf1; border:1.5px solid #9fd8b0; border-radius:14px; padding:14px; margin:0 0 12px; text-align:left; }
@@ -144,7 +145,7 @@
   .zoom-row .chips { flex:1; padding-bottom:4px; }
   .zstep { flex:none; width:34px; height:34px; border-radius:50%; font:inherit; font-size:18px; font-weight:800; background:#fff; border:1.5px solid var(--line); cursor:pointer; }
   .zstep:disabled { opacity:.35; cursor:default; }
-  .linkbtn { background:none; border:0; font:inherit; font-weight:800; color:#c2410c; padding:12px 0; min-height:44px; cursor:pointer; text-align:left; }
+  .linkbtn { overflow-wrap:anywhere; background:none; border:0; font:inherit; font-weight:800; color:#c2410c; padding:12px 0; min-height:44px; cursor:pointer; text-align:left; }
   .pick .about { color:#2b2722; font-size:13px; line-height:1.35; margin-top:3px; }
   .thumb.icon { display:flex; align-items:center; justify-content:center; font-size:26px; background:var(--soft); }
   #find { display:block; width:100%; box-sizing:border-box; font:inherit; font-size:16px; border:1.5px solid var(--line); border-radius:12px; padding:11px 12px; margin:0 0 8px; background:#fff; }
@@ -335,6 +336,7 @@ const stopSig = x => ((x && x.parts) || []).map(q => `${q.name}@${q.date || ''} 
 let shownSig = '', shownParts = [];
 function render() {
   shownSig = stopSig(poll); shownParts = (poll && poll.parts) || [];
+  if (!poll && loadFailed) { app.innerHTML = '<h1>Couldn’t load the plan</h1><p class="sub">Check your connection. We’ll keep trying every few seconds.</p><button class="linkbtn" onclick="load()">Try again now</button>'; return; }
   if (!poll) { app.innerHTML = '<h1>Plan not found</h1><p class="sub">The link may be incomplete. Ask your friend to send it again.</p>'; return; }
   // Typing your own stop or a search when the nearby list arrives: keep typing there after the redraw.
   const act = document.activeElement, keep = act && ['owntitle', 'ownplace', 'find'].includes(act.id) ? { id: act.id, s: act.selectionStart, e: act.selectionEnd } : null;
@@ -2049,8 +2051,10 @@ function planCalLinks(only = null) {
   }
   const len = mins(times[times.length - 1]) - mins(times[0]) + 120;
   const s0 = at(times[0], 0), s1 = at(times[0], len), c = x => x.replace(/[-:]/g, '');
+  // Outlook reads a bare time in the viewer's zone: give it Utah's offset for that moment.
+  const mt = x => { const [y, m, d, h, mi] = x.split(/[-T:]/).map(Number); const n = new Date(Date.UTC(y, m - 1, d, h + 7, mi)); const dst = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', timeZoneName: 'short' }).format(n).includes('MDT'); return x + (dst ? '-06:00' : '-07:00'); };
   return { google: `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${e(title)}&dates=${c(s0)}/${c(s1)}&ctz=America/Denver&details=${e(details)}&location=${e(loc)}`,
-    outlook: `https://outlook.live.com/calendar/0/action/compose?path=%2Fcalendar%2Faction%2Fcompose&rru=addevent&subject=${e(title)}&startdt=${e(s0)}&enddt=${e(s1)}&body=${e(details)}&location=${e(loc)}` };
+    outlook: `https://outlook.live.com/calendar/0/action/compose?path=%2Fcalendar%2Faction%2Fcompose&rru=addevent&subject=${e(title)}&startdt=${e(mt(s0))}&enddt=${e(mt(s1))}&body=${e(details)}&location=${e(loc)}` };
 }
 // A calendar file with one entry per stop (two hours each, Utah time).
 function downloadIcs() {
@@ -2088,12 +2092,13 @@ function foodVote() {
   });
 }
 
+let loadFailed = false; // the first load didn't get through (weak signal), not a missing plan
 async function load() {
   if (!code) { render(); return; }
   const startedAt = Date.now();
   let fresh;
   // A dropped connection keeps the last good results instead of "Vote not found".
-  try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { fresh = poll ? undefined : null; }
+  try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); loadFailed = false; } catch { fresh = poll ? undefined : null; loadFailed = !poll; }
   if (saving || lastWrite >= startedAt) return;
   // A stop added in front moves every stop's number: close an open suggestion list and other-times rows.
   // Stops added, removed or re-sorted: open boxes and drafts are for stops that moved.
