@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>You’re invited · near.by</title>
+<meta property="og:url" content="https://alwish45.github.io/nearby-site/event.html">
+<meta property="og:image" content="https://alwish45.github.io/nearby-site/img/share.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" href="img/favicon.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<meta property="og:title" content="You’re invited 🎉">
+<meta property="og:description" content="See the details and say if you can make it. No app or account needed.">
+<meta name="description" content="See the details and say if you can make it. No app or account needed.">
+<style>
+  :root { --bg:#faf8f4; --ink:#14110d; --muted:#5f5950; --accent:#e8542a; --fill:#c2410c; --line:#ece8e0; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow-wrap:anywhere; }
+  main { max-width:560px; margin:0 auto; padding:16px 16px 60px; }
+  .logo { font-weight:800; font-size:20px; letter-spacing:-0.5px; text-decoration:none; color:var(--ink); }
+  .logo span { color:var(--fill); }
+  .cover { border-radius:22px; padding:28px 20px 20px; margin:14px 0; position:relative; overflow:hidden; }
+  .cover .band { position:absolute; top:0; left:0; right:0; height:14px; }
+  .cover .icon { font-size:40px; }
+  h1 { font-size:28px; line-height:1.15; margin:6px 0 4px; letter-spacing:-0.5px; }
+  .when { font-weight:700; }
+  .sub { color:var(--muted); margin:6px 0; }
+  .what { color:var(--muted); font-size:15px; margin:0 0 10px; }
+  .card { background:#fff; border:1.5px solid var(--line); border-radius:16px; padding:14px; margin:14px 0; }
+  h2 { font-size:18px; margin:0 0 10px; }
+  label { display:block; font-weight:700; font-size:14px; color:var(--muted); margin:10px 0 6px; }
+  input[type=text] { width:100%; font:inherit; font-size:16px; padding:11px 12px; border:1.5px solid #e2ddd3; border-radius:12px; background:#fff; color:var(--ink); }
+  .row { display:flex; gap:8px; align-items:center; }
+  .rsvp { display:flex; gap:8px; margin-top:12px; }
+  button { font:inherit; cursor:pointer; }
+  .rsvp button { flex:1; padding:12px 6px; border-radius:12px; border:1.5px solid #e2ddd3; background:#fff; font-weight:800; font-size:15px; color:var(--ink); min-height:48px; }
+  .rsvp button.on { background:var(--ink); color:#fff; border-color:var(--ink); }
+  .btn { background:var(--ink); color:#fff; border:0; border-radius:12px; padding:11px 16px; font-weight:800; min-height:44px; }
+  .ghost { background:#fff; color:var(--ink); border:1.5px solid #e2ddd3; border-radius:12px; padding:10px 14px; font-weight:800; text-decoration:none; display:inline-block; min-height:44px; }
+  .step { display:flex; align-items:center; gap:10px; }
+  .step button { width:44px; height:44px; border-radius:22px; border:0; background:#efece5; font-size:20px; font-weight:800; color:var(--ink); }
+  .guest { padding:6px 0; border-bottom:1px solid var(--line); }
+  .guest:last-child { border-bottom:0; }
+  .banner { background:#fee2e2; color:#7f1d1d; font-weight:800; padding:12px; border-radius:12px; }
+  .note { white-space:pre-wrap; }
+  .small { font-size:14px; color:var(--muted); }
+  .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+  .cta { display:block; text-align:center; background:var(--fill); color:#fff; text-decoration:none; font-weight:800; padding:14px; border-radius:14px; margin-top:24px; }
+  .err { color:#b91c1c; font-weight:700; margin-top:8px; }
+</style>
+</head>
+<body>
+<main>
+  <a class="logo" href="index.html">near<span>.</span>by</a>
+  <div id="app"><h1>Loading…</h1></div>
+  <a class="cta" id="getapp" href="https://apps.apple.com/us/app/id6812937568">Host your own on near.by</a>
+</main>
+<script>
+// A hosted event on near.by (scripts/add_events.sql in the app repo):
+// guests see the details and answer Going / Maybe / Can't go, no app or account.
+const API = 'https://vieoqoczhqbcxpflyjcp.supabase.co/rest/v1/rpc/';
+const KEY = 'sb_publishable_nxsW5dUJNZJJf-gjGzfHLg_hxUXa9RU';
+const code = (new URLSearchParams(location.search).get('e') || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+const app = document.getElementById('app');
+if (/Android/i.test(navigator.userAgent)) {
+  const ga = document.getElementById('getapp');
+  ga.removeAttribute('href'); ga.textContent = 'near.by is on iPhone now. Android is coming soon'; ga.style.opacity = '0.85';
+}
+function voterKey() {
+  try {
+    let k = localStorage.getItem('nearby.voter');
+    if (!k) { k = Array.from(crypto.getRandomValues(new Uint8Array(12)), b => b.toString(16).padStart(2, '0')).join(''); localStorage.setItem('nearby.voter', k); }
+    return k;
+  } catch { return 'web-' + Math.random().toString(36).slice(2, 14); }
+}
+const me = voterKey();
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const t12 = t => { if (!t) return ''; const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}${m ? ':' + String(m).padStart(2, '0') : ''}${h < 12 ? 'am' : 'pm'}`; };
+const mins = t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + (m || 0); };
+const longDay = d => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+const KINDS = { party: '🎉', birthday: '🎂', game_night: '🎲', dinner: '🍽️', shower: '🍼', graduation: '🎓', holiday: '🎄', meetup: '👋', other: '✨' };
+const COVERS = { confetti: ['#FFE2CC', '#E8542A', '#14110D'], sunset: ['#FFD6A5', '#C2410C', '#14110D'], night: ['#1F2A44', '#7C8CF8', '#FAF8F4'], garden: ['#DFF3E4', '#1E7A46', '#14110D'],
+  gold: ['#F7E7B4', '#A16207', '#14110D'], ocean: ['#D6ECFA', '#1D6FA5', '#14110D'], rose: ['#FBE0E6', '#BE185D', '#14110D'], mint: ['#DDF7F1', '#0F766E', '#14110D'] };
+const LINK = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|co|ly|me|app|link|xyz)\b)/i;
+let myName = (() => { try { return localStorage.getItem('nearby.name') || ''; } catch { return ''; } })();
+const saveName = n => { myName = n; try { localStorage.setItem('nearby.name', n); } catch {} };
+
+async function rpc(fn, body) {
+  const r = await fetch(API + fn, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error((j && j.message) || 'Something went wrong');
+  return j;
+}
+
+let ev = null, loadFailed = false, bring = [], guests = 0, answer = '', saving = false, error = '';
+const typing = () => ['name', 'answer', 'bring', 'note'].includes(document.activeElement && document.activeElement.id);
+
+function over(e) {
+  const start = new Date(e.date + 'T12:00:00'); const [h, m] = e.start.split(':').map(Number); start.setHours(h, m, 0, 0);
+  let end = new Date(start.getTime() + 6 * 3600e3);
+  if (e.end) { end = new Date(start); const [eh, em] = e.end.split(':').map(Number); end.setHours(eh, em, 0, 0); if (end <= start) end.setDate(end.getDate() + 1); }
+  return Date.now() > end.getTime();
+}
+function calLink(e) {
+  const pad = n => String(n).padStart(2, '0'), [y, mo, d] = e.date.split('-').map(Number), [h, mi] = e.start.split(':').map(Number);
+  const s = new Date(Date.UTC(y, mo - 1, d, h, mi)), en = new Date(s.getTime() + (e.end ? (((mins(e.end) - mins(e.start)) + 1440) % 1440 || 180) : 180) * 60000);
+  const f = t => `${t.getUTCFullYear()}${pad(t.getUTCMonth() + 1)}${pad(t.getUTCDate())}T${pad(t.getUTCHours())}${pad(t.getUTCMinutes())}00`;
+  const where = (e.place && (e.place.address || e.place.business || e.place.title)) || '';
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(ev.title || 'Event')}&dates=${f(s)}/${f(en)}&ctz=America/Denver&details=${encodeURIComponent(location.href)}&location=${encodeURIComponent(where)}`;
+}
+
+function render() {
+  if (!ev) {
+    app.innerHTML = loadFailed
+      ? '<h1>Couldn’t load the event</h1><p class="sub">Check your connection. We’ll keep trying.</p><button class="ghost" onclick="load()">Try again now</button>'
+      : '<h1>Event not found</h1><p class="sub">The link may be incomplete. Ask the host to send it again.</p>';
+    return;
+  }
+  const e = ev.event || {}, c = COVERS[e.cover] || COVERS.confetti, done = over(e), host = !!ev.is_organizer, h = ev.heads || {};
+  const notDenver = Intl.DateTimeFormat().resolvedOptions().timeZone !== 'America/Denver';
+  const late = e.end && mins(e.end) < mins(e.start) ? ' (next day)' : '';
+  const place = e.place || {};
+  const list = Array.isArray(ev.guests) ? ev.guests.filter(g => g.status !== 'out' || host) : null;
+  document.title = `${ev.title || 'An event'} · near.by`;
+  app.innerHTML = `
+    ${!host ? '<p class="what">You’re invited to an event on near.by. See the details and say if you can make it.</p>' : ''}
+    <div class="cover" style="background:${c[0]};color:${c[2]}"><div class="band" style="background:${c[1]}"></div>
+      <div class="icon">${KINDS[e.kind] || '🎉'}</div><h1>${esc(ev.title)}</h1>
+      <div class="when">${esc(longDay(e.date))} · ${esc(t12(e.start))}${e.end ? '–' + esc(t12(e.end)) + late : ''}</div>
+      ${notDenver ? '<div class="small" style="color:inherit">🕐 Utah time (MT)</div>' : ''}</div>
+    ${ev.cancelled ? '<p class="banner">🚫 This event was cancelled.</p>' : ''}
+    ${e.updated_at && !ev.cancelled ? `<p class="small">Updated ${esc(new Date(e.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</p>` : ''}
+    <p><b>📍 ${esc(place.business || place.title || '')}</b>${place.address ? '<br>' + esc(place.address) : ''}</p>
+    ${e.address_hidden ? '<p class="small">The address is shared with guests who say they’re going.</p>' : ''}
+    ${e.host ? `<p class="small">Hosted by ${esc(e.host)}</p>` : ''}
+    ${e.note ? `<p class="note">${esc(e.note)}</p>` : ''}
+    <div class="actions">
+      ${!ev.cancelled ? `<a class="ghost" href="${esc(calLink(e))}" target="_blank" rel="noopener">🗓️ Add to calendar</a>` : ''}
+      ${(place.address || place.business) && !e.address_hidden ? `<a class="ghost" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.address || place.business)}" target="_blank" rel="noopener">🧭 Directions</a>` : ''}
+    </div>
+    ${!ev.cancelled && !done ? `<div class="card" id="step-rsvp"><h2>Are you going?</h2>
+      <label for="name">Your name</label><input type="text" id="name" maxlength="30" value="${esc(myName)}" placeholder="Your name">
+      ${Number(e.plus_ones) > 0 ? `<label>Bringing anyone?</label><div class="step"><button aria-label="Fewer guests" onclick="setGuests(-1)">−</button><b id="gcount">${guests ? '+' + guests : 'just me'}</b><button aria-label="More guests" onclick="setGuests(1)">＋</button></div>` : ''}
+      ${e.question ? `<label for="answer">${esc(e.question)}</label><input type="text" id="answer" maxlength="200" value="${esc(answer)}" placeholder="Only the host sees your answer">` : ''}
+      <div class="rsvp">${[['in', '🙌 Going'], ['maybe', '🤔 Maybe'], ['out', '😕 Can’t go']].map(([k, l]) => `<button class="${ev.my_rsvp === k ? 'on' : ''}" aria-pressed="${ev.my_rsvp === k}" onclick="answerRsvp('${k}')">${l}</button>`).join('')}</div>
+      ${ev.full && ev.my_rsvp !== 'in' ? '<p class="small">This event is full.</p>' : ''}
+      ${error ? `<p class="err">${esc(error)}</p>` : ''}
+    </div>` : ''}
+    <div class="card" id="step-guests"><h2>${h.heads || 0} going${h.maybe ? ` · ${h.maybe} maybe` : ''}${e.max_guests ? ` · ${Math.max(e.max_guests - (h.heads || 0), 0)} spots left` : ''}</h2>
+      ${list ? list.map(g => `<div class="guest">${g.status === 'in' ? '🙌' : g.status === 'maybe' ? '🤔' : '😕'} ${esc(g.name)}${g.guests ? ' +' + Number(g.guests) : ''}${g.mine ? ' (you)' : ''}${host && g.answer ? `<div class="small">“${esc(g.answer)}”</div>` : ''}</div>`).join('') || '<p class="small">No answers yet.</p>'
+        : '<p class="small">The host keeps the guest list private.</p>'}</div>
+    ${e.potluck ? `<div class="card" id="step-bring"><h2>🥘 Who’s bringing what</h2>
+      ${bring.map(b => `<div class="guest">${esc(b.mine ? 'You' : b.name)} · ${esc(b.item)}</div>`).join('') || '<p class="small">Nothing yet.</p>'}
+      ${!ev.cancelled && !done ? `<div class="row" style="margin-top:10px"><input type="text" id="bring" maxlength="60" placeholder="I’m bringing…"><button class="btn" onclick="addBring()">Add</button></div>` : ''}</div>` : ''}
+    ${done && !ev.cancelled ? `<div class="card"><h2>How was it? 📸</h2>${e.album ? `<a class="ghost" href="${esc(e.album)}" target="_blank" rel="noopener">Open the photo album</a>` : '<p class="small">The host can add a shared photo album.</p>'}</div>` : ''}
+    <div class="card" id="step-notes"><h2>Notes</h2>
+      ${(ev.comments || []).slice(-20).map(n => `<div class="guest"><b>${esc(n.name)}</b> ${esc(n.body)}</div>`).join('') || '<p class="small">No notes yet.</p>'}
+      ${!ev.cancelled ? `<div class="row" style="margin-top:10px"><input type="text" id="note" maxlength="300" placeholder="Say something to everyone"><button class="btn" onclick="addNote()">Post</button></div>` : ''}</div>
+    ${host ? '<p class="small">You’re a host. Open near.by on your phone to edit the event, message guests or cancel it.</p>' : ''}`;
+}
+
+function setGuests(d) { const e = ev.event || {}; guests = Math.min(Math.max(guests + d, 0), Number(e.plus_ones) || 0); const el = document.getElementById('gcount'); if (el) el.textContent = guests ? '+' + guests : 'just me'; }
+async function answerRsvp(status) {
+  if (saving) return;
+  const n = (document.getElementById('name') || {}).value || '';
+  const a = (document.getElementById('answer') || {}).value || '';
+  error = '';
+  if (!n.trim()) { error = 'Add your name so the host knows who’s coming.'; render(); return; }
+  if (LINK.test(a)) { error = 'Leave links out of your answer.'; render(); return; }
+  saving = true; answer = a;
+  try { saveName(n.trim()); ev = await rpc('rsvp_event', { p_code: code, p_voter_key: me, p_status: status, p_name: n.trim(), p_guests: status === 'in' ? guests : 0, p_answer: a.trim() || null }); }
+  catch (e) { error = /full|extra guest|cancelled|links/i.test(e.message) ? e.message.charAt(0).toUpperCase() + e.message.slice(1) + '.' : 'Couldn’t save that. Try again.'; }
+  finally { saving = false; render(); }
+}
+async function addBring() {
+  const it = ((document.getElementById('bring') || {}).value || '').trim();
+  if (!it || saving) return;
+  saving = true;
+  try { bring = await rpc('add_poll_bring', { p_code: code, p_voter_key: me, p_name: myName || null, p_item: it }) || bring; } catch { error = 'Couldn’t add that. Try again.'; }
+  finally { saving = false; render(); }
+}
+async function addNote() {
+  const b = ((document.getElementById('note') || {}).value || '').trim();
+  if (!b || saving) return;
+  saving = true;
+  try { await rpc('add_poll_comment', { p_code: code, p_voter_key: me, p_name: myName || null, p_body: b }); await load(true); } catch { error = 'Couldn’t post that. Try again.'; }
+  finally { saving = false; render(); }
+}
+
+async function load(force = false) {
+  if (!code) { render(); return; }
+  try {
+    const fresh = await rpc('get_event', { p_code: code, p_voter_key: me });
+    loadFailed = false;
+    if (fresh) {
+      ev = fresh;
+      if (ev.my_guests != null && !typing()) guests = ev.my_guests;
+      if (ev.my_answer && !answer) answer = ev.my_answer;
+      if (ev.event && ev.event.potluck) { try { bring = await rpc('get_poll_bring', { p_code: code, p_voter_key: me }) || []; } catch {} }
+    } else ev = null;
+  } catch { loadFailed = !ev; }
+  if (force || !typing()) render();
+}
+load();
+setInterval(load, 15000);
+</script>
+</body>
+</html>

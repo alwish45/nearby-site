@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Our wedding · near.by</title>
+<meta property="og:title" content="You’re invited to our wedding 💍">
+<meta property="og:description" content="Details, events and RSVP. No app or account needed.">
+<meta property="og:image" content="https://alwish45.github.io/nearby-site/img/share.png">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="img/favicon.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<style>
+  :root { --bg:#fbeee9; --ink:#3b2420; --accent:#c25a4a; --card:#ffffff; --muted:#6b5a55; --line:#ecd9d2; }
+  body[data-theme="sage"] { --bg:#eef2ea; --ink:#22301f; --accent:#5f7d55; --muted:#56624f; --line:#d9e2d3; }
+  body[data-theme="navy"] { --bg:#e9eef6; --ink:#16233b; --accent:#2f4f86; --muted:#4f5b70; --line:#d3dbe8; }
+  body[data-theme="gold"] { --bg:#f8f2e4; --ink:#2e2614; --accent:#8a6519; --muted:#625640; --line:#e9ddc2; }
+  body[data-theme="desert"] { --bg:#f7ece2; --ink:#33231a; --accent:#a8552c; --muted:#6b5546; --line:#ead7c6; }
+  body[data-theme="mono"] { --bg:#f4f3f1; --ink:#151412; --accent:#151412; --muted:#5d5a55; --line:#e1ded8; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:17px/1.55 Georgia, "Times New Roman", serif; }
+  .wrap { max-width:640px; margin:0 auto; padding:28px 16px 64px; }
+  .sans { font-family:-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  header { text-align:center; padding:28px 0 18px; }
+  .kicker { font:700 13px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; letter-spacing:3px; text-transform:uppercase; color:var(--accent); }
+  h1 { font-size:42px; line-height:1.1; margin:12px 0 8px; font-weight:400; overflow-wrap:anywhere; }
+  h1 .amp { color:var(--accent); font-style:italic; }
+  .date { font-size:19px; }
+  .count { margin-top:6px; color:var(--accent); font-style:italic; }
+  .tz { font:13px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color:var(--muted); margin-top:8px; }
+  h2 { font-weight:400; font-size:26px; text-align:center; margin:34px 0 12px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:18px; margin:12px 0; }
+  .card h3 { margin:0 0 4px; font-size:21px; font-weight:400; }
+  .meta { font:15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color:var(--muted); overflow-wrap:anywhere; }
+  .story { white-space:pre-wrap; overflow-wrap:anywhere; }
+  a { color:var(--accent); font-weight:700; }
+  .links { display:flex; flex-wrap:wrap; gap:10px; margin-top:10px; }
+  .btn { display:inline-block; font:700 16px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background:var(--accent); color:#fff; border:0; border-radius:14px; padding:14px 18px; text-decoration:none; cursor:pointer; min-height:44px; }
+  .btn.ghost { background:transparent; color:var(--accent); border:2px solid var(--accent); }
+  .btn[disabled] { opacity:.5; }
+  input, select, textarea { font:16px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; width:100%; padding:12px; border:1px solid var(--line); border-radius:12px; background:#fff; color:#14110d; margin-top:6px; }
+  label.lab { font:700 14px/1.3 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color:var(--muted); display:block; margin-top:10px; }
+  .guest { border-top:1px solid var(--line); padding-top:12px; margin-top:12px; }
+  .guest:first-of-type { border-top:0; margin-top:4px; padding-top:4px; }
+  .choice { display:flex; gap:8px; margin-top:8px; flex-wrap:wrap; }
+  .choice button { font:700 15px/1 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding:12px 16px; border-radius:999px; border:2px solid var(--line); background:#fff; color:var(--ink); min-height:44px; cursor:pointer; }
+  .choice button[aria-pressed="true"] { border-color:var(--accent); background:var(--accent); color:#fff; }
+  .note { font:15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color:var(--muted); }
+  .ok { font:700 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color:var(--accent); margin-top:10px; }
+  .msg { border-left:3px solid var(--accent); padding-left:12px; margin:8px 0; }
+  footer { text-align:center; margin-top:40px; font:14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; color:var(--muted); }
+</style>
+</head>
+<body>
+<div class="wrap" id="app"><p class="note" style="text-align:center;margin-top:80px">Loading…</p></div>
+<script>
+const API = 'https://vieoqoczhqbcxpflyjcp.supabase.co/rest/v1/rpc/';
+const KEY = 'sb_publishable_nxsW5dUJNZJJf-gjGzfHLg_hxUXa9RU';
+const app = document.getElementById('app');
+const params = new URLSearchParams(location.search);
+const W = (params.get('w') || '').trim();
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const store = { get: k => { try { return localStorage.getItem(k); } catch { return null; } }, set: (k, v) => { try { localStorage.setItem(k, v); } catch {} } };
+// The household's invite code: from the link (?i=), else the one this browser used before.
+let invite = (params.get('i') || store.get('nearby.wedding.' + W) || '').trim().toUpperCase();
+let password = store.get('nearby.wedding.pw.' + W) || '';
+let site = null, saving = false, answers = {}, thanks = false;
+
+async function rpc(fn, body) {
+  const r = await fetch(API + fn, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const j = await r.json().catch(() => null);
+  if (!r.ok) throw new Error((j && j.message) || 'Something went wrong');
+  return j;
+}
+const at = d => new Date(d + 'T12:00:00');
+const longDay = d => (d ? at(d).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) : '');
+const t12 = t => { if (!t) return ''; const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}${m ? ':' + String(m).padStart(2, '0') : ''}${h < 12 ? 'am' : 'pm'}`; };
+// Days from today in Utah to the wedding.
+function utahToday() { return new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' }); }
+function countdown(d) {
+  if (!d) return '';
+  const n = Math.round((at(d) - at(utahToday())) / 864e5);
+  return n > 1 ? `${n} days to go` : n === 1 ? 'Tomorrow!' : n === 0 ? 'Today!' : 'Just married';
+}
+const notUtah = (() => { try { return Intl.DateTimeFormat().resolvedOptions().timeZone !== 'America/Denver'; } catch { return false; } })();
+const mapLink = q => `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(q)}`;
+// Calendar links in Utah time: Google takes the zone; the .ics carries it too.
+function gcal(e) {
+  const d = (e.event_date || '').replace(/-/g, '');
+  if (!d) return null;
+  const s = (e.start_time || '00:00').replace(':', '') + '00';
+  const endT = e.end_time || (e.start_time ? String(Math.min(23, Number(e.start_time.slice(0, 2)) + 3)).padStart(2, '0') + e.start_time.slice(2) : '23:59');
+  const dates = e.start_time ? `${d}T${s}/${d}T${endT.replace(':', '')}00` : `${d}/${d}`;
+  const text = `${e.name}: ${site.name1} & ${site.name2}`;
+  return `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${encodeURIComponent(text)}&dates=${dates}&ctz=America/Denver&location=${encodeURIComponent([e.place, e.address].filter(Boolean).join(', '))}&details=${encodeURIComponent(location.href.split('#')[0])}`;
+}
+
+async function load() {
+  if (!W) { app.innerHTML = '<h1>Wedding not found</h1><p class="note">The link may be incomplete. Ask the couple to send it again.</p>'; return; }
+  try {
+    site = await rpc('get_wedding_site', { p_w: W, p_invite: invite || null, p_password: password || null });
+  } catch {
+    app.innerHTML = '<h1>Couldn’t load this page</h1><p class="note">Check your connection, then <a href="" onclick="location.reload();return false">try again</a>.</p>';
+    return;
+  }
+  if (!site) { app.innerHTML = '<h1>Wedding not found</h1><p class="note">The link may be incomplete. Ask the couple to send it again.</p>'; return; }
+  if (site.bad_invite) { invite = ''; store.set('nearby.wedding.' + W, ''); }
+  else if (invite && site.household) store.set('nearby.wedding.' + W, invite);
+  document.body.dataset.theme = site.theme || 'blush';
+  document.title = `${site.name1} & ${site.name2} · near.by`;
+  answers = {};
+  render();
+}
+
+function render() {
+  const s = site;
+  if (s.locked) {
+    app.innerHTML = `<header><div class="kicker">The wedding of</div><h1>${esc(s.name1)} <span class="amp">&amp;</span> ${esc(s.name2)}</h1></header>
+      <div class="card"><h3>This page is private</h3><p class="note">Type the password from your invitation, or your invite code.</p>
+        ${s.bad_invite ? '<p class="note" role="alert">That code didn’t work. Check it and try again.</p>' : ''}
+        <label class="lab" for="pw">Password or invite code</label><input id="pw" autocomplete="off" autocapitalize="off">
+        <p><button class="btn" id="unlock">Open</button></p></div>`;
+    document.getElementById('unlock').onclick = () => {
+      const v = document.getElementById('pw').value.trim();
+      if (!v) return;
+      // Either one: an invite code (6 letters and numbers) or the site password.
+      if (/^[A-Z0-9]{6}$/i.test(v)) invite = v.toUpperCase();
+      password = v; store.set('nearby.wedding.pw.' + W, v);
+      load();
+    };
+    return;
+  }
+  const h = s.household;
+  const events = s.events || [];
+  const evHtml = events.map(e => {
+    const when = [longDay(e.event_date), e.start_time ? t12(e.start_time) + (e.end_time ? '–' + t12(e.end_time) : '') : ''].filter(Boolean).join(' · ');
+    const where = [e.place, e.address].filter(Boolean).join(', ');
+    const g = gcal(e);
+    return `<div class="card"><h3>${esc(e.name)}</h3>
+      ${when ? `<div class="meta">${esc(when)}</div>` : ''}
+      ${where ? `<div class="meta">📍 ${esc(where)} · <a href="${esc(mapLink(where))}" target="_blank" rel="noopener">Map</a></div>` : ''}
+      ${e.dress_code ? `<div class="meta">Dress code: ${esc(e.dress_code)}</div>` : ''}
+      ${e.notes ? `<p class="meta story">${esc(e.notes)}</p>` : ''}
+      ${g ? `<div class="links"><a href="${esc(g)}" target="_blank" rel="noopener">Add to Google Calendar</a><a href="#" data-ics="${esc(e.id)}">Apple / Outlook (.ics)</a></div>` : ''}
+    </div>`;
+  }).join('');
+  const reg = (s.registry || []).filter(r => /^https:\/\//.test(r.url || ''));
+  app.innerHTML = `
+    <header>
+      <div class="kicker">The wedding of</div>
+      <h1>${esc(s.name1)} <span class="amp">&amp;</span> ${esc(s.name2)}</h1>
+      ${s.wedding_date ? `<div class="date">${esc(longDay(s.wedding_date))}${s.city ? ` · ${esc(s.city)}` : ''}</div><div class="count">${esc(countdown(s.wedding_date))}</div>` : s.city ? `<div class="date">${esc(s.city)}</div>` : ''}
+      ${notUtah && events.some(e => e.start_time) ? '<div class="tz">🕐 Times are Utah time (MT).</div>' : ''}
+    </header>
+    ${h && (s.messages || []).length ? `<div class="card"><h3>From ${esc(s.name1)} &amp; ${esc(s.name2)}</h3>${s.messages.map(m => `<p class="msg">${esc(m.body)}</p>`).join('')}</div>` : ''}
+    ${s.story ? `<h2>Our story</h2><div class="card story">${esc(s.story)}</div>` : ''}
+    ${s.venue_name || s.venue_address ? `<h2>Where</h2><div class="card"><h3>${esc(s.venue_name || '')}</h3>${s.venue_address ? `<div class="meta">${esc(s.venue_address)} · <a href="${esc(mapLink([s.venue_name, s.venue_address].filter(Boolean).join(', ')))}" target="_blank" rel="noopener">Map</a></div>` : ''}</div>` : ''}
+    ${events.length ? `<h2>${h ? 'Your invitation' : 'Events'}</h2>${evHtml}` : ''}
+    ${reg.length ? `<h2>Registry</h2><div class="card"><div class="links">${reg.map(r => `<a class="btn ghost" href="${esc(r.url)}" target="_blank" rel="noopener">${esc(r.label)}</a>`).join('')}</div></div>` : ''}
+    <h2 id="rsvp">RSVP</h2>
+    ${h ? rsvpHtml(s, h) : `<div class="card"><p class="note">Type the invite code from your invitation to see your events and RSVP.</p>
+      ${s.bad_invite ? '<p class="note" role="alert">That code didn’t work. Check it and try again.</p>' : ''}
+      <label class="lab" for="code">Invite code</label><input id="code" maxlength="6" autocomplete="off" autocapitalize="characters" placeholder="K7Q2ZP">
+      <p><button class="btn" id="go">Find my invitation</button></p></div>`}
+    <footer>Made with <a href="index.html">near.by</a> · plan your own wedding, party or night out, free.</footer>`;
+  if (!h) {
+    document.getElementById('go').onclick = () => { const v = document.getElementById('code').value.trim().toUpperCase(); if (v) { invite = v; load(); } };
+  } else bindRsvp(s, h);
+  app.querySelectorAll('[data-ics]').forEach(a => a.onclick = ev => { ev.preventDefault(); downloadIcs(events.find(e => e.id === a.dataset.ics)); });
+}
+
+// The household's RSVP: each guest, each event they're invited to.
+function cur(g, e) { const k = g.id + ':' + e.id; return answers[k] || { ...((g.rsvps || {})[e.id] || {}) }; }
+function rsvpHtml(s, h) {
+  const events = s.events || [];
+  if (!events.length) return '<div class="card"><p class="note">The couple hasn’t added events yet. Check back soon.</p></div>';
+  const meals = s.meal_options || [];
+  return `<div class="card"><h3>${esc(h.name)}</h3>
+    ${s.rsvp_by ? `<p class="note">Please reply by ${esc(longDay(s.rsvp_by))}.</p>` : ''}
+    ${h.guests.map(g => `<div class="guest">
+      <div style="font-size:20px">${esc([g.first_name, g.last_name].filter(Boolean).join(' '))}</div>
+      ${events.map(e => { const a = cur(g, e); return `<div style="margin-top:10px"><div class="meta">${esc(e.name)}</div>
+        <div class="choice" role="group" aria-label="${esc(g.first_name)}: ${esc(e.name)}">
+          <button data-g="${esc(g.id)}" data-e="${esc(e.id)}" data-s="yes" aria-pressed="${a.status === 'yes'}">Joyfully accepts</button>
+          <button data-g="${esc(g.id)}" data-e="${esc(e.id)}" data-s="no" aria-pressed="${a.status === 'no'}">Regretfully declines</button>
+        </div>
+        ${e.asks_meal && meals.length && a.status === 'yes' ? `<label class="lab" for="m-${esc(g.id)}-${esc(e.id)}">Meal</label>
+          <select id="m-${esc(g.id)}-${esc(e.id)}" data-meal-g="${esc(g.id)}" data-meal-e="${esc(e.id)}"><option value="">Choose…</option>${meals.map(m => `<option ${a.meal === m ? 'selected' : ''}>${esc(m)}</option>`).join('')}</select>` : ''}
+        ${g.plus_one_allowed && a.status === 'yes' ? `<label class="lab"><input type="checkbox" style="width:auto;margin-right:8px" data-plus-g="${esc(g.id)}" data-plus-e="${esc(e.id)}" ${a.plus_one ? 'checked' : ''}>Bringing a guest</label>` : ''}
+      </div>`; }).join('')}
+      ${g.plus_one_allowed ? `<label class="lab" for="p-${esc(g.id)}">Your guest’s name</label><input id="p-${esc(g.id)}" data-pname="${esc(g.id)}" maxlength="60" value="${esc(g.plus_one_name || '')}">` : ''}
+      <label class="lab" for="d-${esc(g.id)}">Allergies or dietary needs</label><input id="d-${esc(g.id)}" data-diet="${esc(g.id)}" maxlength="200" value="${esc(g.dietary || '')}">
+    </div>`).join('')}
+    <p><button class="btn" id="send">Send RSVP</button></p>
+    ${thanks ? '<p class="ok" role="status">Thank you! Your RSVP is in. You can change it here any time before the date.</p>' : ''}
+  </div>`;
+}
+function bindRsvp(s, h) {
+  const set = (gid, eid, patch) => { const g = h.guests.find(x => x.id === gid), e = s.events.find(x => x.id === eid); answers[gid + ':' + eid] = { ...cur(g, e), ...patch }; };
+  app.querySelectorAll('.choice button').forEach(b => b.onclick = () => { set(b.dataset.g, b.dataset.e, { status: b.dataset.s }); thanks = false; keepFields(); render(); });
+  app.querySelectorAll('[data-meal-g]').forEach(sel => sel.onchange = () => set(sel.dataset.mealG, sel.dataset.mealE, { meal: sel.value }));
+  app.querySelectorAll('[data-plus-g]').forEach(c => c.onchange = () => set(c.dataset.plusG, c.dataset.plusE, { plus_one: c.checked }));
+  document.getElementById('send').onclick = send;
+}
+// Typed names and dietary notes survive a redraw.
+function keepFields() {
+  app.querySelectorAll('[data-pname]').forEach(i => { const g = site.household.guests.find(x => x.id === i.dataset.pname); if (g) g.plus_one_name = i.value; });
+  app.querySelectorAll('[data-diet]').forEach(i => { const g = site.household.guests.find(x => x.id === i.dataset.diet); if (g) g.dietary = i.value; });
+}
+async function send() {
+  if (saving) return;
+  keepFields();
+  const s = site, h = s.household, list = [];
+  for (const g of h.guests) for (const e of s.events) {
+    const a = cur(g, e);
+    if (a.status !== 'yes' && a.status !== 'no') continue;
+    list.push({ guest_id: g.id, event_id: e.id, status: a.status, meal: a.meal || null, plus_one: !!a.plus_one,
+      ...(g.plus_one_allowed ? { plus_one_name: g.plus_one_name || '' } : {}), dietary: g.dietary || '' });
+  }
+  if (!list.length) { alert('Pick Joyfully accepts or Regretfully declines for at least one person.'); return; }
+  const missingMeal = list.some(a => a.status === 'yes' && (s.meal_options || []).length && s.events.find(e => e.id === a.event_id)?.asks_meal && !a.meal);
+  if (missingMeal && !confirm('Some meals aren’t chosen yet. Send anyway?')) return;
+  saving = true;
+  const btn = document.getElementById('send'); btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    site = await rpc('submit_wedding_rsvp', { p_w: W, p_invite: invite, p_answers: list });
+    answers = {}; thanks = true; render();
+    document.getElementById('rsvp').scrollIntoView({ behavior: 'smooth' });
+  } catch (e) {
+    alert(e.message || 'Couldn’t send that. Try again.');
+    btn.disabled = false; btn.textContent = 'Send RSVP';
+  } finally { saving = false; }
+}
+
+function downloadIcs(e) {
+  if (!e || !e.event_date) return;
+  const d = e.event_date.replace(/-/g, '');
+  const p = t => t.replace(':', '') + '00';
+  const end = e.end_time || (e.start_time ? String(Math.min(23, Number(e.start_time.slice(0, 2)) + 3)).padStart(2, '0') + e.start_time.slice(2) : null);
+  const lines = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//near.by//wedding//EN',
+    'BEGIN:VTIMEZONE', 'TZID:America/Denver',
+    'BEGIN:STANDARD', 'DTSTART:19701101T020000', 'RRULE:FREQ=YEARLY;BYMONTH=11;BYDAY=1SU', 'TZOFFSETFROM:-0600', 'TZOFFSETTO:-0700', 'END:STANDARD',
+    'BEGIN:DAYLIGHT', 'DTSTART:19700308T020000', 'RRULE:FREQ=YEARLY;BYMONTH=3;BYDAY=2SU', 'TZOFFSETFROM:-0700', 'TZOFFSETTO:-0600', 'END:DAYLIGHT', 'END:VTIMEZONE',
+    'BEGIN:VEVENT', `UID:${e.id}@nearby`, `DTSTAMP:${new Date().toISOString().replace(/[-:]/g, '').slice(0, 15)}Z`,
+    ...(e.start_time ? [`DTSTART;TZID=America/Denver:${d}T${p(e.start_time)}`, `DTEND;TZID=America/Denver:${d}T${p(end)}`] : [`DTSTART;VALUE=DATE:${d}`]),
+    `SUMMARY:${(e.name + ': ' + site.name1 + ' & ' + site.name2).replace(/[,;\\]/g, ' ')}`,
+    `LOCATION:${[e.place, e.address].filter(Boolean).join(' ').replace(/[,;\\]/g, ' ')}`,
+    `URL:${location.href.split('#')[0]}`, 'END:VEVENT', 'END:VCALENDAR'];
+  const blob = new Blob([lines.join('\r\n')], { type: 'text/calendar' });
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'wedding-event.ics'; a.click();
+}
+
+load();
+</script>
+</body>
+</html>
