@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>near.by for event vendors</title>
+<meta property="og:title" content="Get event leads from people planning in Salt Lake">
+<meta property="og:url" content="https://alwish45.github.io/nearby-site/vendors.html">
+<meta property="og:image" content="https://alwish45.github.io/nearby-site/img/share.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" href="img/favicon.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
+<meta name="description" content="Venues, caterers, DJs, photographers and planners: get quote requests from people planning parties and weddings around Salt Lake. Free to list, pay per lead.">
+<style>
+  :root { --bg:#faf8f4; --ink:#14110d; --muted:#6b655b; --accent:#e8542a; --line:#ece8e0; --gold:#fff8e6; }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:17px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width:760px; margin:0 auto; padding:36px 20px 64px; }
+  .logo { font-weight:800; font-size:28px; letter-spacing:-0.5px; }
+  .logo span { color:var(--accent); }
+  h1 { font-size:36px; line-height:1.15; letter-spacing:-0.6px; margin:28px 0 10px; }
+  h2 { font-size:22px; margin:36px 0 12px; }
+  .lead { font-size:19px; color:#3a352f; }
+  .grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:12px; }
+  .card { background:#fff; border:1px solid var(--line); border-radius:16px; padding:18px; }
+  .card b { display:block; font-size:18px; margin-bottom:4px; }
+  .price { background:var(--ink); color:#fff; border-radius:18px; padding:22px; }
+  .price .big { font-size:34px; font-weight:900; }
+  .muted { color:var(--muted); font-size:15px; }
+  .price .muted { color:#d8d2c6; }
+  table { width:100%; border-collapse:collapse; margin-top:10px; font-size:16px; }
+  td, th { text-align:left; padding:8px 4px; border-bottom:1px solid #3a352f; }
+  .founding { background:var(--gold); border:1px solid #f3d9a4; border-radius:16px; padding:16px 18px; margin-top:12px; }
+  ol li { margin-bottom:8px; }
+  .cta { display:inline-block; background:#c2410c; color:#fff; text-decoration:none; font-weight:800; padding:15px 22px; border-radius:14px; margin-top:8px; }
+  .code { font-size:15px; color:var(--muted); margin-top:16px; }
+  a { color:var(--accent); }
+  @media print { .cta { border:2px solid var(--accent); } body { background:#fff; } }
+</style>
+</head>
+<body>
+<main>
+  <div class="logo">near<span>.</span>by</div>
+  <h1>Get event leads from people planning in Salt Lake</h1>
+  <p class="lead">People use near.by to plan nights out, birthdays, rehearsal dinners, work parties and weddings with their friends. When they need a place or a pro, they find you and ask for a quote.</p>
+
+  <h2>Who it's for</h2>
+  <div class="grid">
+    <div class="card"><b>🎉 Venues</b><span class="muted">Private rooms, party venues, wedding venues, rooftops, back rooms with a bar.</span></div>
+    <div class="card"><b>🍽️ Food & drink</b><span class="muted">Catering, cakes and desserts, bar service, food trucks.</span></div>
+    <div class="card"><b>📸 Pros who come to you</b><span class="muted">Photographers, DJs and bands, florists, planners, rentals, hair & makeup, officiants, transport.</span></div>
+  </div>
+
+  <h2>How it works</h2>
+  <ol>
+    <li>Turn on <strong>We do events</strong> in your near.by dashboard and say what you offer, prices from, capacity and what's included.</li>
+    <li>Hosts find you by date, guests and budget, and send a request, often from the plan their friends are voting on.</li>
+    <li>You see the event right away. Open the contact details to reply: <strong>$15 a lead, $25 for a wedding</strong>, or free with near.by Pro (5 a month).</li>
+    <li>Reply from the app by email or text. Mark it booked when it is.</li>
+  </ol>
+  <div class="founding"><strong>Only pay for real requests.</strong> Spam, a wrong number or not an event? Send it back within 7 days and we return the lead. No contracts, no monthly minimum.</div>
+
+  <h2>near.by Pro for vendors</h2>
+  <p>$29 a month: 5 leads included every month, $15 of promotion credit, a verified mark, posts to your followers and insights. Cancel any time.</p>
+
+  <h2>No storefront?</h2>
+  <p>Photographers, DJs, planners and caterers can create an event listing in the app. We check new listings within a day, then hosts can find you.</p>
+
+  <a class="cta" href="https://apps.apple.com/us/app/id6812937568">Get near.by on the App Store</a>
+  <p class="code">Questions? <a href="mailto:nearbyutah@gmail.com">nearbyutah@gmail.com</a> · <a href="business-terms.html">Business Terms</a> · <a href="for-business.html">near.by for businesses</a></p>
+</main>
+<script>
+// near.by is on iPhone now; on Android phones the App Store link would be a dead end.
+if (/Android/i.test(navigator.userAgent)) document.querySelectorAll('a[href*="apps.apple.com"]').forEach(a => {
+  const note = document.createElement('span');
+  note.className = a.className; note.style.background = '#5c564d'; note.style.cursor = 'default';
+  note.textContent = 'Coming soon to Android';
+  note.setAttribute('role', 'note');
+  a.replaceWith(note);
+});
+</script>
+</body>
+</html>
