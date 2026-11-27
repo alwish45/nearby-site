@@ -141,8 +141,6 @@
   .hangbar { background:linear-gradient(135deg,#fff1e6,#ffe4f1 60%,#ede9fe); border:1.5px solid #f6d7c3; border-radius:16px; padding:12px 14px; margin:4px 0 12px; }
   .hangbar .cd { font-weight:800; font-size:18px; margin:0 0 8px; }
   .hangrow { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-  .hypebtn { font:inherit; font-weight:800; font-size:16px; color:#fff; background:linear-gradient(135deg,#e8542a,#db2777); border:0; border-radius:999px; padding:10px 15px; cursor:pointer; min-height:44px; touch-action:manipulation; user-select:none; -webkit-user-select:none; }
-  .hypebtn:active { transform:scale(.94); }
   .hangchip { display:inline-block; font-weight:700; font-size:14px; color:var(--ink); background:#fff; border:1.5px solid var(--line); border-radius:999px; padding:10px 12px; text-decoration:none; }
   .floaty { position:fixed; z-index:60; font-size:26px; pointer-events:none; animation:floatup 1.1s ease-out forwards; }
   @keyframes floatup { from { transform:translateY(0) scale(.8); opacity:1; } to { transform:translateY(-120px) scale(1.4); opacity:0; } }
@@ -442,13 +440,13 @@ function render() {
     ${!isOrg() && !poll.closed ? '<p class="who" style="text-align:left;margin:-6px 0 6px">A friend is planning something on near.by and wants your say.</p>' : ''}
     ${notUtahZone() ? '<p class="who" style="text-align:left;margin:0 0 8px">🕐 Times are Utah time (MT).</p>' : ''}
     ${peopleHtml()}
+    ${activityHtml()}
     ${hangbarHtml(fullyClosed)}
     ${poll.is_creator && !poll.closed && !poll.final ? '<button class="downbtn" id="invitemore" style="margin:4px 0 12px">📣 Send the link to friends</button>' : ''}
     <p class="sub">${invite
       ? (poll.closed ? 'This invite has closed.' : rsvpShown ? 'Tap “I’m in” if you’re coming. No app needed.' : 'Tap “I’m down” if you’re in. No app needed.')
       : `${poll.closed ? 'This vote has closed.' : final ? 'The plan is set. Say if you’re in below.' : (poll.parts || []).length ? 'Tick the times you can make and vote on places. No app needed.' : multi ? (voted ? 'Thanks! Tap any others you’d be happy with, or tap again to undo.' : 'Tap every one you’d be happy with. No app needed.') : voted ? 'Thanks for voting! Tap another to change it.' : 'Tap your favorite. No app needed.'} ${people ? `· ${people} ${people === 1 ? 'person' : 'people'} voted` : ''}`}</p>
     ${pastDay ? `<p class="off" style="text-align:left">This was for ${esc(day(planDayOf()))}.</p>` : ''}
-    ${(() => { const n = (poll.activity || []).filter(a => seenAt && new Date(a.at).getTime() > seenAt).length; return n ? `<a class="newbar" href="#activity">🔔 ${n} new since you last looked ›</a>` : ''; })()}
     ${!poll.closed && !final && poll.closes_at && !(planDayOf() && isoDay(new Date(new Date(poll.closes_at).toLocaleString('en-US', { timeZone: 'America/Denver' }))) > planDayOf()) ? `<p class="who" style="text-align:left;margin:-4px 0 8px">Voting closes ${esc(new Date(poll.closes_at).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'America/Denver' }))}</p>` : ''}
     ${(() => { if (joined && !poll.my_name && savedName && !nameFilled) { nameFilled = true; saveName(); } return ''; })()}
     ${nameCard ? `<div class="namecard"><div class="t">👋 ${askName ? 'What’s your name?' : 'Friends see you as “Someone”'}</div><div class="m">${askName ? 'So your friends know who voted and who’s in.' : 'Add your name so they know it’s you who’s in and voted.'}</div>
@@ -507,7 +505,6 @@ function render() {
       <button class="downbtn ${poll.i_am_down ? 'on' : ''}" id="downbtn" ${fullyClosed ? 'disabled' : ''}>${poll.i_am_down ? '✓ You’re down (tap to undo)' : 'I’m down 🙌'}</button>
     </div>` : ''}
     ${hangoutHtml(fullyClosed)}
-    ${activityHtml()}
     ${notesHtml(nameCard || savedName ? null : '', typedNote)}
     ${stopHtml()}
     ${fabOn() ? '<button class="fab" id="fab" aria-label="Suggest a place or your own event">＋ Suggest or add an event</button>' : ''}
@@ -1263,7 +1260,7 @@ const markSeen = () => { try { localStorage.setItem(seenKey(), String(Date.now()
 addEventListener('pagehide', markSeen);
 document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'hidden') markSeen(); else { try { seenAt = Number(localStorage.getItem(seenKey())) || seenAt; } catch {} } });
 function activityHtml() {
-  const list = Array.isArray(poll.activity) ? [...poll.activity].reverse() : null;
+  const list = Array.isArray(poll.activity) ? poll.activity.filter(a => !/ is hyped$/.test(a.line || '')).reverse() : null; // hype is gone: hide its old lines
   if (!list || !list.length) return '';
   const fresh = list.filter(a => seenAt && new Date(a.at).getTime() > seenAt).length;
   const shown = actAll ? list : list.slice(0, 5);
@@ -2020,12 +2017,12 @@ async function inviteMore() {
   catch { prompt('Copy the invite:', text); }
 }
 // ---------------------------------------------------------------------------
-// The hangout: a countdown and hype meter at the top, and a photo wall and a
+// The hangout: a countdown, the game and photos at the top, and a photo wall and a
 // mini-game with a leaderboard for the plan (scripts/add_plan_hangout.sql in
 // the app repo). Older databases without these just don't show them.
 const STORAGE = API.replace('/rest/v1/rpc/', '/storage/v1/');
 const photoUrl = path => `${STORAGE}object/public/plan-photos/${path.split('/').map(encodeURIComponent).join('/')}`;
-let hypePending = 0, hypeTimer = null, photosAll = false;
+let photosAll = false;
 
 // When the plan starts (Utah time): the day it's set for and its first stop's time.
 function startsAt() {
@@ -2053,36 +2050,18 @@ function countdownText() {
   return `⏳ ${dd} day${dd === 1 ? '' : 's'}${h ? ` ${h} hr${h === 1 ? '' : 's'}` : ''} to go`;
 }
 function hangbarHtml(fullyClosed) {
-  if (!('hype' in poll) || fullyClosed) return '';
-  const h = poll.hype || { total: 0, top: [] }, total = (h.total || 0) + hypePending;
+  if (!('photos' in poll) || fullyClosed) return '';
   const cd = countdownText();
   const photos = (poll.photos || []).length;
+  const top = (poll.scores || []).filter(x => x.game === 'dash')[0];
   return `<div class="hangbar">
     ${cd ? `<div class="cd">${esc(cd)}</div>` : ''}
     <div class="hangrow">
-      <button class="hypebtn" id="hype" aria-label="Hype it up: tap as much as you like">🔥 Hype <b id="hypen">${total}</b></button>
+      <a class="hangchip" href="#hangout-game">🎮 Play the game</a>
       <a class="hangchip" href="#hangout">📸 ${photos ? `${photos} photo${photos === 1 ? '' : 's'}` : 'Photos'}</a>
-      <a class="hangchip" href="#hangout-game">🎮 Play</a>
     </div>
-    ${(h.top || []).length ? `<div class="who" style="margin:6px 0 0">Most hyped: ${h.top.map(x => `${esc(x.name)} 🔥${x.n}`).join(' · ')}</div>` : '<div class="who" style="margin:6px 0 0">Tap 🔥 to get everyone hyped. Tap as much as you like.</div>'}
+    <div class="who" style="margin:6px 0 0">${top ? `🏆 ${esc(top.name)} leads Night Out Dash with ${top.best}. Can you beat it?` : 'A quick game for the group: highest score wins bragging rights.'}</div>
   </div>`;
-}
-// Hype: show it right away, send the taps in a batch.
-function hype(ev) {
-  hypePending++;
-  const n = document.getElementById('hypen');
-  if (n) n.textContent = String(((poll.hype && poll.hype.total) || 0) + hypePending);
-  burst(ev, ['🔥', '🎉', '🙌', '✨', '🥳'][Math.floor(Math.random() * 5)]);
-  clearTimeout(hypeTimer);
-  hypeTimer = setTimeout(sendHype, hypePending >= 50 ? 0 : 900);
-}
-async function sendHype() {
-  const n = Math.min(50, hypePending);
-  if (!n) return;
-  hypePending -= n;
-  try { const fresh = await rpc('hype_poll', { p_code: code, p_voter_key: me, p_n: n, p_name: myName() }); poll = fresh; lastWrite = Date.now(); if (!typingIn()) render(); }
-  catch { /* hype is for fun: a missed batch doesn't matter */ }
-  if (hypePending) hypeTimer = setTimeout(sendHype, 300);
 }
 // Emoji that float up from where you tapped.
 function burst(ev, emoji, count = 1) {
@@ -2107,20 +2086,19 @@ function hangoutHtml(fullyClosed) {
   const mineS = board.find(s => s.mine);
   const medal = k => ['🥇', '🥈', '🥉'][k] || `${k + 1}.`;
   return `<div class="box hangout" id="hangout"><h2>🎉 The hangout</h2>
-    <div class="who" style="margin:0 0 10px">Everyone with the link can add photos, play and hype it up.</div>
+    <div class="who" style="margin:0 0 10px">Everyone with the link can add photos and play the game.</div>
     <div class="hsub">📸 Photos</div>
     ${photos.length ? `<div class="pgrid">${shown.map((ph, k) => `<button class="pthumb" data-photo="${k}" aria-label="Photo from ${esc(ph.name)}${ph.caption ? ': ' + esc(ph.caption) : ''}"><img src="${esc(photoUrl(ph.path))}" alt="" loading="lazy"></button>`).join('')}</div>
       ${photos.length > 9 ? `<button class="linkbtn" id="photomore">${photosAll ? 'Show fewer' : `Show all ${photos.length}`}</button>` : ''}`
       : '<div class="who" style="margin:0 0 8px">No photos yet. Pregame selfies, outfit checks, the view: share the vibe.</div>'}
     ${canAdd ? '<label class="downbtn photoadd" for="photofile">📸 Add photos</label><input type="file" id="photofile" accept="image/*" multiple hidden>' : ''}
-    <div class="hsub" id="hangout-game" style="margin-top:16px">🎮 Night Out Dash</div>
+    <div class="hsub" id="hangout-game" style="margin-top:16px">🎮 The game: Night Out Dash</div>
     <div class="who" style="margin:0 0 8px">Catch the tacos, drinks and tickets. Dodge the bill 🧾. ${GAME_SECS} seconds. Best score on the plan wins bragging rights.</div>
     ${board.length ? `<div class="board">${board.slice(0, 10).map((s, k) => `<div class="brow ${s.mine ? 'me' : ''}"><span>${medal(k)} ${esc(s.name)}${s.mine ? ' (you)' : ''}</span><b>${s.best}</b></div>`).join('')}</div>` : '<div class="who" style="margin:0 0 8px">No scores yet. Set the bar.</div>'}
-    <button class="downbtn" id="playdash" ${fullyClosed ? 'disabled' : ''}>${mineS ? `▶ Play again · your best ${mineS.best}` : '▶ Play'}</button>
+    <button class="downbtn" id="playdash" ${fullyClosed ? 'disabled' : ''}>${mineS ? `▶ Play again · your best ${mineS.best}` : '▶ Play the game'}</button>
   </div>`;
 }
 function bindHangout() {
-  document.getElementById('hype')?.addEventListener('click', hype);
   document.getElementById('photomore')?.addEventListener('click', () => { photosAll = !photosAll; render(); });
   app.querySelectorAll('[data-photo]').forEach(b => b.addEventListener('click', () => openPhoto(Number(b.dataset.photo))));
   document.getElementById('photofile')?.addEventListener('change', e => { const fs = [...(e.target.files || [])]; e.target.value = ''; if (fs.length) pickPhotos(fs); });
