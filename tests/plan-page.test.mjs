@@ -108,13 +108,23 @@ describe('page loads', () => {
     });
   });
 
-  test('a closed vote: says so, no adding, no notes box', async () => {
-    const poll = makePoll({ closed: true, closes_at: '2026-11-20T06:00:00Z', options: [opt(), opt()] });
+  test('a vote closed today: says so, no adding (notes stay open for a day)', async () => {
+    const poll = makePoll({ closed: true, closes_at: '2026-11-26T06:00:00Z', options: [opt(), opt()] });
     await withPlan(poll, async t => {
       assert.match(await t.text('.sub'), /This vote has closed\./);
       assert.equal(await count(t, '.opt[data-i]:not([disabled])'), 0);
       assert.equal(await count(t, '#fab'), 0);
       assert.equal(await count(t, '#stopopen'), 0);
+    });
+  });
+
+  test('ended days ago without being locked in: one "ended" card with how the votes stood', async () => {
+    const poll = makePoll({ closed: true, closes_at: '2026-11-20T06:00:00Z', options: [opt({ title: 'Tacos' }), opt({ title: 'Pho' })], counts: [1, 3] });
+    await withPlan(poll, async t => {
+      assert.match(await t.text('.summary'), /This plan has ended[\s\S]*Pho \(3\), Tacos \(1\)/);
+      assert.equal(await count(t, '.opt'), 0);
+      assert.equal(await count(t, '.rsvp'), 0);
+      assert.equal(await count(t, '#fab'), 0);
       assert.equal(await count(t, '#note'), 0);
     });
   });
@@ -999,6 +1009,76 @@ describe('escaping', () => {
       assert.equal(await t.text('#when-t'), 'When for <img src=x onerror=window.__x=7>?');
       assert.equal(await count(t, '.askname img'), 0);
       assert.equal(await t.page.evaluate(() => window.__x), undefined);
+    });
+  });
+});
+
+describe('Potluck plans', () => {
+  const potluck = (over = {}) => makePoll({ title: 'Friendsgiving', parts: [{ name: 'Potluck', time: '18:00' }],
+    options: [opt({ title: 'Sam’s place', business: '12 E 400 S', own: true, deal_id: null, part: 0 }), opt({ title: 'Jo’s place', business: null, own: true, deal_id: null, part: 0 })],
+    rsvp: { in: ['Sam', 'Jo', 'Ann'], maybe: [], out: [] }, part_times: [], ...over });
+  const items = () => [{ id: 1, name: 'Sam', item: 'Funeral potatoes', mine: false }, { id: 2, name: 'Jo', item: '<img src=x onerror=alert(1)>', mine: false }, { id: 3, name: 'Me', item: 'Apple pie', mine: true }];
+
+  test('shows who’s bringing what, escaped, with counts and the headcount', async () => {
+    await withPlan(potluck(), { name: 'Me', rpc: { get_poll_bring: () => items() } }, async t => {
+      await t.page.waitForSelector('#step-bring .bringrow');
+      const txt = await t.page.locator('#step-bring').innerText();
+      assert.match(txt, /Who’s bringing what/);
+      assert.match(txt, /3 coming · 3 bringing something/);
+      assert.match(txt, /Sam · Funeral potatoes/);
+      assert.match(txt, /You · Apple pie/);
+      assert.match(txt, /<img src=x/);                                  // shown as text, not markup
+      assert.equal(await count(t, '#step-bring img'), 0);
+      assert.match(await t.page.locator('[data-bringchip="Side"]').innerText(), /Side · 1/);
+      assert.match(await t.page.locator('[data-bringchip="Dessert"]').innerText(), /Dessert · 1/);
+      assert.equal(await count(t, '[data-bringdel]'), 1);                 // only your own item
+      assert.equal(t.state.dialogs.length, 0);
+    });
+  });
+  test('adding and removing send the right calls', async () => {
+    let list = items();
+    await withPlan(potluck(), { name: 'Me', rpc: {
+      get_poll_bring: () => list,
+      add_poll_bring: b => (list = [...list, { id: 9, name: 'Me', item: b.p_item, mine: true }]),
+      remove_poll_bring: b => (list = list.filter(x => x.id !== b.p_id)),
+    } }, async t => {
+      await t.page.waitForSelector('#bringitem');
+      await t.page.click('[data-bringchip="Drinks"]');
+      await t.page.fill('#bringitem', 'Lemonade');
+      await t.page.click('#bringadd');
+      const add = await t.waitCall('add_poll_bring');
+      assert.equal(add.p_item, 'Lemonade');
+      assert.equal(add.p_name, 'Me');
+      await t.page.waitForFunction(() => /Lemonade/.test(document.getElementById('step-bring').textContent));
+      await t.page.click('[data-bringdel="3"]');
+      const rm = await t.waitCall('remove_poll_bring');
+      assert.equal(rm.p_id, 3);
+    });
+  });
+  test('no list on plans without a potluck stop; offer-your-place box on a potluck', async () => {
+    await withPlan(dinnerDrinks(), { name: 'Me' }, async t => {
+      assert.equal(await count(t, '#step-bring'), 0);
+      assert.equal(t.calls('get_poll_bring').length, 0);
+    });
+  });
+});
+
+describe('stops after midnight (up to 2am) are that night’s', () => {
+  const late = () => makePoll({ title: 'Friday night', parts: [{ name: 'Drinks', time: '21:00' }, { name: 'Late night', time: '00:30' }],
+    options: [opt({ business: 'Bar X', part: 0, deal_id: 'n1' }), opt({ business: 'Diner', part: 1, deal_id: 'n2' })] });
+  test('shows 12:30am as part of the night, after 9pm', async () => {
+    await withPlan(late(), { name: 'Me' }, async t => {
+      const text = await t.page.textContent('body');
+      assert.ok(text.includes('12:30am'), 'shows 12:30am');
+      assert.ok(text.includes('Your night'), 'a night out, not a day plan');
+      assert.ok(text.indexOf('9pm') < text.indexOf('12:30am'), '9pm before 12:30am');
+    });
+  });
+  test('time rules: night order, the calendar day, and what has passed', async () => {
+    await withPlan(late(), { now: '2026-11-28T01:10:00-07:00' }, async t => {
+      const r = await t.page.evaluate(() => [nkey('00:30'), nextIso('2026-11-27'), ALL_TIMES.at(-1), ALL_TIMES.includes('00:30'), ALL_TIMES.includes('02:30'),
+        gonePast('2026-11-27', '00:30'), gonePast('2026-11-27', '01:30'), gonePast('2026-11-28', '00:30')]);
+      assert.deepEqual(r, ['24:30', '2026-11-28', '02:00', true, false, true, false, false]);
     });
   });
 });

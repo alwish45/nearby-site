@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Become a near.by Rep</title>
+<meta property="og:title" content="Become a near.by Rep">
+<meta property="og:url" content="https://alwish45.github.io/nearby-site/reps.html">
+<meta property="og:image" content="https://alwish45.github.io/nearby-site/img/share.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" href="img/favicon.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <meta name="description" content="Earn 40% of what the local businesses you sign up pay for promotions on near.by, for two years. Free to join.">
 <style>
   :root { --bg:#faf8f4; --ink:#14110d; --muted:#6b655b; --accent:#e8542a; --line:#ece8e0; }
@@ -66,5 +74,15 @@
   <a class="cta" href="https://apps.apple.com/us/app/id6812937568">Get near.by on the App Store</a>
   <p class="muted">Reps are independent contractors. Earnings are paid from business payments only. <a href="rep-terms.html">Rep Terms</a> · <a href="mailto:nearbyutah@gmail.com">nearbyutah@gmail.com</a></p>
 </main>
+<script>
+// near.by is on iPhone now; on Android phones the App Store link would be a dead end.
+if (/Android/i.test(navigator.userAgent)) document.querySelectorAll('a[href*="apps.apple.com"]').forEach(a => {
+  const note = document.createElement('span');
+  note.className = a.className; note.style.background = '#5c564d'; note.style.cursor = 'default';
+  note.textContent = 'Coming soon to Android';
+  note.setAttribute('role', 'note');
+  a.replaceWith(note);
+});
+</script>
 </body>
 </html>
