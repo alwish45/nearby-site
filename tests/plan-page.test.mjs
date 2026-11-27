@@ -1012,3 +1012,53 @@ describe('escaping', () => {
     });
   });
 });
+
+describe('Potluck plans', () => {
+  const potluck = (over = {}) => makePoll({ title: 'Friendsgiving', parts: [{ name: 'Potluck', time: '18:00' }],
+    options: [opt({ title: 'Sam’s place', business: '12 E 400 S', own: true, deal_id: null, part: 0 }), opt({ title: 'Jo’s place', business: null, own: true, deal_id: null, part: 0 })],
+    rsvp: { in: ['Sam', 'Jo', 'Ann'], maybe: [], out: [] }, part_times: [], ...over });
+  const items = () => [{ id: 1, name: 'Sam', item: 'Funeral potatoes', mine: false }, { id: 2, name: 'Jo', item: '<img src=x onerror=alert(1)>', mine: false }, { id: 3, name: 'Me', item: 'Apple pie', mine: true }];
+
+  test('shows who’s bringing what, escaped, with counts and the headcount', async () => {
+    await withPlan(potluck(), { name: 'Me', rpc: { get_poll_bring: () => items() } }, async t => {
+      await t.page.waitForSelector('#step-bring .bringrow');
+      const txt = await t.page.locator('#step-bring').innerText();
+      assert.match(txt, /Who’s bringing what/);
+      assert.match(txt, /3 coming · 3 bringing something/);
+      assert.match(txt, /Sam · Funeral potatoes/);
+      assert.match(txt, /You · Apple pie/);
+      assert.match(txt, /<img src=x/);                                  // shown as text, not markup
+      assert.equal(await count(t, '#step-bring img'), 0);
+      assert.match(await t.page.locator('[data-bringchip="Side"]').innerText(), /Side · 1/);
+      assert.match(await t.page.locator('[data-bringchip="Dessert"]').innerText(), /Dessert · 1/);
+      assert.equal(await count(t, '[data-bringdel]'), 1);                 // only your own item
+      assert.equal(t.state.dialogs.length, 0);
+    });
+  });
+  test('adding and removing send the right calls', async () => {
+    let list = items();
+    await withPlan(potluck(), { name: 'Me', rpc: {
+      get_poll_bring: () => list,
+      add_poll_bring: b => (list = [...list, { id: 9, name: 'Me', item: b.p_item, mine: true }]),
+      remove_poll_bring: b => (list = list.filter(x => x.id !== b.p_id)),
+    } }, async t => {
+      await t.page.waitForSelector('#bringitem');
+      await t.page.click('[data-bringchip="Drinks"]');
+      await t.page.fill('#bringitem', 'Lemonade');
+      await t.page.click('#bringadd');
+      const add = await t.waitCall('add_poll_bring');
+      assert.equal(add.p_item, 'Lemonade');
+      assert.equal(add.p_name, 'Me');
+      await t.page.waitForFunction(() => /Lemonade/.test(document.getElementById('step-bring').textContent));
+      await t.page.click('[data-bringdel="3"]');
+      const rm = await t.waitCall('remove_poll_bring');
+      assert.equal(rm.p_id, 3);
+    });
+  });
+  test('no list on plans without a potluck stop; offer-your-place box on a potluck', async () => {
+    await withPlan(dinnerDrinks(), { name: 'Me' }, async t => {
+      assert.equal(await count(t, '#step-bring'), 0);
+      assert.equal(t.calls('get_poll_bring').length, 0);
+    });
+  });
+});

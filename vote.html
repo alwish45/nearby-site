@@ -197,6 +197,11 @@ const API = 'https://vieoqoczhqbcxpflyjcp.supabase.co/rest/v1/rpc/';
 const KEY = 'sb_publishable_nxsW5dUJNZJJf-gjGzfHLg_hxUXa9RU';
 const code = (new URLSearchParams(location.search).get('p') || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const app = document.getElementById('app');
+// near.by isn't on Google Play yet: Android phones get a note, not an App Store page.
+if (/Android/i.test(navigator.userAgent)) {
+  const ga = document.getElementById('getapp');
+  if (ga) { ga.removeAttribute('href'); ga.setAttribute('aria-disabled', 'true'); ga.textContent = 'near.by is on iPhone now. Android is coming soon'; ga.style.opacity = '0.85'; ga.style.cursor = 'default'; }
+}
 
 function voterKey() {
   try {
@@ -417,6 +422,7 @@ function render() {
       : !poll.closed && savedName ? `<p class="voting-as">Voting as <b>${esc(savedName)}</b> · <button id="chname">Change</button></p>` : ''}
     ${parted ? nightHtml(final ? final.parts : partWin, people, !!final, pastDay) : ''}
     ${isOrg() && !final && !poll.closed && poll.options.length ? `<div class="lockbox"><button class="lockbtn" id="lockin">🔒 Lock it in</button><div class="who" style="margin:6px 0 0">When the group has decided: makes it the final plan (the winning place at each time, and the day and times most can make), stops the voting and tells everyone.</div></div>` : ''}
+    ${isPotluckPoll() ? bringHtml(fullyClosed) : ''}
     ${parted && rsvpShown ? rsvpHtml(final, fullyClosed) : ''}
     ${stepsHtml(sections, mine, final, invite, parted, rsvpShown)}
     ${parted && !final && !poll.closed ? '<h2 class="sec">Help shape it</h2>' : ''}
@@ -454,7 +460,7 @@ function render() {
       }).join('');
       const open = adding && addPart === pi;
       const sug = poll.can_add && !final && (!p || idxs.length < 6)
-        ? `<button class="suggest" data-suggest="${pi ?? ''}">${open ? 'Done' : p ? `＋ Suggest another place${p.time ? ` for ${esc(t12(p.time))}` : ''}` : '＋ Suggest another place'}</button>${open ? (p && 'part_times' in poll ? ownHtml(/walk|park|hang|something to do|activity/i.test(p.name)) : '') + picksHtml() : ''}` : '';
+        ? `<button class="suggest" data-suggest="${pi ?? ''}">${open ? 'Done' : p ? `＋ Suggest another place${p.time ? ` for ${esc(t12(p.time))}` : ''}` : '＋ Suggest another place'}</button>${open ? (p && 'part_times' in poll ? ownHtml(/walk|park|hang|something to do|activity/i.test(p.name), /^potluck\b/i.test(p.name || '')) : '') + picksHtml() : ''}` : '';
       return head + opts + sug + (p ? threadHtml(pi, p) : '');
     }).join('')}
     ${poll.how && !invite && !parted && !final && foodVote() ? `<div class="box"><h2>How should we do it?</h2><div class="how">${[['dine_in', '🍽️ Dine in'], ['pickup', '🛍️ Pickup'], ['delivery', '🚗 Delivery']].map(([k, l]) => `<button data-how="${k}" class="${poll.my_how === k ? 'on' : ''}" ${fullyClosed ? 'disabled' : ''}>${l}<b>${poll.how[k] || 0}</b></button>`).join('')}</div><div class="who">A head count for the group. Check with the place that it offers pickup or delivery.</div></div>` : ''}
@@ -518,6 +524,7 @@ function render() {
   document.getElementById('lockin')?.addEventListener('click', () => lockIn());
   document.getElementById('unlockbtn')?.addEventListener('click', unlock);
   app.querySelectorAll('[data-ticket]').forEach(b => b.addEventListener('click', () => toggleTicket(b.dataset.ticket)));
+  bindBring();
   document.getElementById('actmore')?.addEventListener('click', () => { actAll = !actAll; render(); });
   document.getElementById('stopclose')?.addEventListener('click', () => { stopOpen = false; adding = false; addPart = null; addDay = null; render(); });
   document.body.classList.toggle('has-fab', !!document.getElementById('fab'));
@@ -1174,7 +1181,7 @@ function redrawFeed() {
   body.innerHTML = feedBody();
   bindFeed();
 }
-const typingIn = () => { const id = (document.activeElement && document.activeElement.id) || ''; return ['name', 'note', 'find', 'zday', 'phone', 'owntitle', 'ownplace'].includes(id) || id.startsWith('note-'); };
+const typingIn = () => { const id = (document.activeElement && document.activeElement.id) || ''; return ['name', 'note', 'find', 'zday', 'phone', 'owntitle', 'ownplace', 'bringitem'].includes(id) || id.startsWith('note-'); };
 const agoText = at => { const m = Math.max(0, Math.round((Date.now() - new Date(at).getTime()) / 60000));
   return m < 1 ? 'just now' : m < 60 ? `${m} min ago` : m < 1440 ? `${Math.round(m / 60)} hr ago` : day(String(at).slice(0, 10)); };
 const noteRow = c => `<div class="cnote"><div><b>${c.mine ? 'You' : esc(c.name)}</b> <span class="who">${esc(agoText(c.at))}</span>${c.mine ? ` <button class="del" data-del="${Number(c.id)}">Delete</button>` : ''}</div><div>${esc(c.body)}</div></div>`;
@@ -1486,7 +1493,14 @@ function saveOwnDraft() {
   const t = document.getElementById('owntitle'), p = document.getElementById('ownplace');
   if (t) ownDraft = { t: t.value, p: p ? p.value : '' };
 }
-function ownHtml(outdoors) {
+function ownHtml(outdoors, potluck = false) {
+  // A potluck's options are friends' places.
+  if (potluck) return `<div class="ownbox">
+    <div class="who" style="margin:0">🏠 Offer your place</div>
+    <div class="chips" style="padding-top:6px"><button class="chip ${ownDraft.t === 'My place' ? 'on' : ''}" data-ownidea="My place">🏠 My place</button></div>
+    <input id="owntitle" maxlength="60" autocomplete="off" placeholder="Whose place? e.g. Sam’s place" value="${esc(ownDraft.t)}">
+    <input id="ownplace" maxlength="60" autocomplete="off" placeholder="Address (optional), for directions" value="${esc(ownDraft.p)}">
+    <button class="downbtn" id="ownadd">Add it</button></div>`;
   const parks = outdoors ? `<div class="who" style="margin:0">🌳 Parks and walks</div><div class="chips" style="padding-top:6px">${PARKS.map((x, i) => `<button class="chip" data-park="${i}">＋ ${esc(x[0])}</button>`).join('')}</div>` : '';
   return `<div class="ownbox">${parks}
     <div class="who" style="margin:0">✏️ Or add your own</div>
@@ -1810,6 +1824,58 @@ async function setRsvp(st) {
     if (nameAsk && myName()) nameAsk = false;
     try { poll = await rpc('set_down', { p_code: code, p_voter_key: me, p_down: next === 'in', p_name: myName(), p_status: next }); render(); }
     catch (e) { alert(/closed/.test(e.message) ? 'This vote has closed.' : "Couldn't save that. Try again."); }
+  });
+}
+// Potlucks: "Who's bringing what" (scripts/add_potluck.sql in the app repo).
+// A stop named Potluck has friends' places as options; the list sits apart
+// from get_poll and loads with each refresh.
+const isPotluckPoll = () => !!poll && (poll.parts || []).some(p => /^potluck\b/i.test(p.name || ''));
+const BRING_CHIPS = [['main', 'Main', /\bmain|lasagna|chili|casserole|ham|turkey|chicken|brisket|pulled pork|enchilada|pasta/i],
+  ['side', 'Side', /\bside|potato|funeral potatoes|rolls?\b|bread|beans|corn|mac/i], ['salad', 'Salad', /salad|veggie|fruit/i],
+  ['dessert', 'Dessert', /dessert|pie|cake|cookie|brownie|ice cream|jello|jell-o|cupcake/i],
+  ['drinks', 'Drinks', /drink|soda|juice|lemonade|water|beer|wine|punch|coffee/i], ['plates', 'Plates & cups', /plate|cup|napkin|utensil|fork|silverware|ice\b/i]];
+let bring = null, bringOff = false, bringDraft = '';
+async function loadBring() {
+  if (!code || !isPotluckPoll() || bringOff) return;
+  try { bring = await rpc('get_poll_bring', { p_code: code, p_voter_key: me }); }
+  catch (e) { if (/could not find the function/i.test(e.message || '')) bringOff = true; return; }
+  if (!typingIn() && !saving) render();
+}
+function bringHtml(fullyClosed) {
+  if (bringOff) return '';
+  const list = Array.isArray(bring) ? bring : [];
+  const coming = ((poll.rsvp || {}).in || []).length;
+  const people = new Set(list.map(b => (b.mine ? '\u0000me' : b.name || 'Someone'))).size;
+  const line = [coming ? `${coming} coming` : '', people ? `${people} bringing something` : 'Nobody has signed up to bring anything yet'].filter(Boolean).join(' · ');
+  const n = Object.fromEntries(BRING_CHIPS.map(([k]) => [k, 0]));
+  list.forEach(b => { const c = BRING_CHIPS.find(x => x[2].test(b.item || '')); if (c) n[c[0]]++; });
+  return `<div class="down" id="step-bring"><h2>🥘 Who’s bringing what</h2>
+    <div class="m">${bring == null ? 'Loading…' : esc(line)}</div>
+    ${list.map(b => `<div class="who bringrow" style="display:flex;gap:8px;align-items:center;margin:4px 0"><span style="flex:1;overflow-wrap:anywhere">${esc(b.mine ? 'You' : b.name)} · ${esc(b.item)}</span>${b.mine || isOrg() ? `<button class="linkbtn" data-bringdel="${esc(b.id)}" aria-label="Take ${esc(b.item)} off the list" style="padding:0 6px">✕</button>` : ''}</div>`).join('')}
+    ${fullyClosed ? '' : `<div class="chips" style="padding-top:6px">${BRING_CHIPS.map(([k, l]) => `<button class="chip ${bringDraft === l ? 'on' : ''}" data-bringchip="${esc(l)}">${esc(l)}${n[k] ? ` · ${n[k]}` : ''}</button>`).join('')}</div>
+    <input id="bringitem" maxlength="60" autocomplete="off" placeholder="I’m bringing… e.g. Funeral potatoes" value="${esc(bringDraft)}" aria-label="What you’re bringing">
+    <button class="downbtn" id="bringadd">Add</button>`}</div>`;
+}
+function bindBring() {
+  app.querySelectorAll('[data-bringchip]').forEach(b => b.addEventListener('click', () => { bringDraft = b.dataset.bringchip; render(); document.getElementById('bringitem')?.focus(); }));
+  const inp = document.getElementById('bringitem');
+  if (inp) { inp.addEventListener('input', () => { bringDraft = inp.value; }); inp.addEventListener('keydown', e => { if (e.key === 'Enter') addBring(); }); }
+  document.getElementById('bringadd')?.addEventListener('click', addBring);
+  app.querySelectorAll('[data-bringdel]').forEach(b => b.addEventListener('click', () => removeBring(Number(b.dataset.bringdel))));
+}
+async function addBring() {
+  const item = (document.getElementById('bringitem')?.value || bringDraft).trim();
+  if (!item) { document.getElementById('bringitem')?.focus(); return; }
+  if (!(await askNameFirst())) return;
+  return once(async () => {
+    try { bring = await rpc('add_poll_bring', { p_code: code, p_voter_key: me, p_name: myName(), p_item: item.slice(0, 60) }); bringDraft = ''; render(); }
+    catch (e) { alert(/full/.test(e.message) ? 'The list is full.' : /closed/.test(e.message) ? 'This plan has closed.' : /too many/.test(e.message) ? 'That’s a lot at once. Try again in a few minutes.' : 'Couldn’t add that. Try again.'); }
+  });
+}
+async function removeBring(id) {
+  return once(async () => {
+    try { bring = await rpc('remove_poll_bring', { p_code: code, p_voter_key: me, p_id: id }); render(); }
+    catch { alert('Couldn’t take that off. Try again.'); }
   });
 }
 function rsvpHtml(final, fullyClosed) {
@@ -2136,6 +2202,7 @@ async function load() {
   // Don't redraw under someone typing their name, a note or a search, or picking a time.
   if (!addingTime && !typingIn()) render();
   loadInfo();
+  loadBring();
 }
 load();
 setInterval(load, 10000);
