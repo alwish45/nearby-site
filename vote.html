@@ -1066,7 +1066,8 @@ function slotOk(d, slot) {
   return start < b && end > a;
 }
 // Lunch is somewhere to eat, open at lunchtime (not a pottery class at 1pm or a whiskey flight).
-const isLunch = d => catOk(d, 'food') && !DRINK_TITLE.test(d.title || '') && !/whiske?y|bourbon|\bflights?\b|tasting/i.test(d.title || '');
+const FOODISH = /pizzas?|burgers?|wings|tacos?|nachos|sliders?|\bfries\b|\bapps\b|appetizers?|\bbites\b|sandwich(es)?|\bribs\b|\bfood\b|\bmeals?\b|\bbowls?\b|pasta|sushi|\brolls?\b|flatbreads?|pretzels?|quesadillas?|\bbbq\b|chicken|\bsteaks?\b|\bfish\b/i;
+const isLunch = d => catOk(d, 'food') && (!(DRINK_TITLE.test(d.title || '') || /whiske?y|bourbon|\bflights?\b|tasting/i.test(d.title || '')) || FOODISH.test(d.title || ''));
 const findText = d => `${d.title || ''} ${d.business_name || ''} ${d.category || ''} ${tagsOf(d).join(' ')} ${d.price_info || ''} ${d.description || ''}`.toLowerCase();
 function feedPool() {
   // A new stop before or after: nothing already in the vote.
@@ -1911,7 +1912,17 @@ const isOrg = () => !!(poll && (poll.is_organizer ?? poll.is_creator));
 // Lock it in: for a plan for each day, the day first (its stops stay, the other
 // days' come out); then a place for each stop (the leader, or pick one where
 // it's tied), the times the group picked, and the day.
-async function lockIn(kept = null) {
+const stopKey = q => `${partDay(q)}|${String(q.time || '')}|${q.name || ''}`;
+const placeKey = o => `${o.title || ''}|${o.business || ''}`;
+// The place to lock in at stop pi: the leader, or ask where it's tied / unvoted (null: cancelled).
+async function pickAt(pi) {
+  const parts = poll.parts || [], idxs = poll.options.map((o, i) => (o.part === pi ? i : -1)).filter(i => i >= 0);
+  const n = i => poll.counts[i] || 0, top = Math.max(0, ...idxs.map(n)), lead = idxs.filter(i => n(i) === top);
+  if (lead.length === 1) return lead[0];
+  return askPick(`${showDays() ? wday(partDay(parts[pi])) + ' ' : ''}${parts[pi].time ? t12(parts[pi].time) + ' · ' : ''}${parts[pi].name}`, top ? 'It’s a tie. Pick the one to lock in.' : 'No votes yet. Pick the one to lock in.',
+    (top ? lead : idxs).map(i => ({ v: i, label: placeName(poll.options[i]) })), 'Lock this one in');
+}
+async function lockIn(kept = null, chosen = null) {
   if (!isOrg() || saving) return;
   const parts = poll.parts || [];
   if (parts.length && altDays()) {
@@ -1920,11 +1931,20 @@ async function lockIn(kept = null) {
     const win = await askPick('Which day’s plan?', lead.length === 1 ? `${day(lead[0])} works for the most people. The other day’s stops come out of the plan.` : 'Pick the day to keep. The other day’s stops come out of the plan.',
       days.map(d => ({ v: d, label: longDay(d), on: lead.length === 1 && d === lead[0] })), 'Keep this day');
     if (!win) return;
+    const picks = {};
+    for (let pi = 0; pi < parts.length; pi++) {
+      if (partDay(parts[pi]) !== win) continue;
+      const k = await pickAt(pi);
+      if (k == null) return; // nothing has changed yet
+      picks[stopKey(parts[pi])] = placeKey(poll.options[k]);
+    }
+    const others = [...new Set(parts.map(partDay))].filter(d => d !== win).map(wday).join(' and ');
+    if (!confirm(`Lock in ${wday(win)}'s plan? ${others}'s stops come out, voting stops and everyone is told the plan.`)) return;
     const drop = parts.map((q, pi) => (partDay(q) !== win ? pi : -1)).filter(pi => pi >= 0).sort((a, b) => b - a);
     try { for (const pi of drop) poll = await rpc('remove_poll_stop', { p_code: code, p_creator_key: me, p_part: pi }); }
     catch { alert("Couldn't take the other day's stops out. Try again."); render(); return; }
     render();
-    return lockIn(win);
+    return lockIn(win, picks);
   }
   const final = {};
   if (parts.length) {
@@ -1932,12 +1952,11 @@ async function lockIn(kept = null) {
     for (let pi = 0; pi < parts.length; pi++) {
       const idxs = poll.options.map((o, i) => (o.part === pi ? i : -1)).filter(i => i >= 0);
       const n = i => poll.counts[i] || 0, top = Math.max(0, ...idxs.map(n)), lead = idxs.filter(i => n(i) === top);
-      let pick = lead.length === 1 ? lead[0] : null;
-      if (pick == null) {
-        pick = await askPick(`${parts[pi].time ? t12(parts[pi].time) + ' · ' : ''}${parts[pi].name}`, top ? 'It’s a tie. Pick the one to lock in.' : 'No votes yet. Pick the one to lock in.',
-          (top ? lead : idxs).map(i => ({ v: i, label: placeName(poll.options[i]) })), 'Lock this one in');
-        if (pick == null) return;
-      }
+      // Picked before the other days' stops came out: the same place at the same stop.
+      const was = chosen && chosen[stopKey(parts[pi])];
+      let pick = was != null ? idxs.find(i => placeKey(poll.options[i]) === was) ?? null : null;
+      if (pick == null) pick = lead.length === 1 ? lead[0] : await pickAt(pi);
+      if (pick == null) return;
       final.parts.push(pick);
     }
     if ('part_times' in poll) {
@@ -1962,7 +1981,7 @@ async function lockIn(kept = null) {
     else if (lead.length > 1) { const d = await askPick('Which day?', 'These days are tied. Pick one.', lead.map(i => ({ v: poll.times[i].day, label: longDay(poll.times[i].day) })), 'Use this day'); if (!d) return; final.day = d; }
   }
   if (!final.day && poll.plan_day) final.day = poll.plan_day;
-  if (!confirm('Lock it in? Voting stops and everyone is told the plan.')) return;
+  if (!chosen && !confirm('Lock it in? Voting stops and everyone is told the plan.')) return; // a day's plan was confirmed already
   await once(async () => { try { poll = await rpc('lock_poll', { p_code: code, p_creator_key: me, p_final: final }); render(); toast('It’s set · everyone’s been told'); }
     catch (e) { alert(/only the/.test(e.message) ? 'Only the organizers can lock it in.' : "Couldn't lock it in. Try again."); } });
 }
