@@ -1152,3 +1152,111 @@ describe('stops after midnight (up to 2am) are that night’s', () => {
     });
   });
 });
+
+describe('the hangout', () => {
+  const PNG = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=', 'base64');
+  const hang = (over = {}) => dinnerDrinks({ hype: { total: 7, people: 2, mine: 0, top: [{ name: 'Ann', n: 5 }, { name: 'Bo', n: 2 }] }, photos: [], scores: [], ...over });
+  const ph = (k, over = {}) => ({ id: `00000000-0000-4000-8000-00000000000${k}`, path: `${CODE}/00000000-0000-4000-8000-00000000000${k}.jpg`, name: 'Ann', caption: null, at: NOW, mine: false, ...over });
+
+  test('the countdown counts to the first stop, and hype shows who’s most hyped', async () => {
+    await withPlan(hang(), { name: 'Kai' }, async t => {
+      assert.match(await t.text('.hangbar'), /⏳ 1 day 5 hrs to go/);
+      assert.match(await t.text('.hangbar'), /🔥 Hype 7/);
+      assert.match(await t.text('.hangbar'), /Most hyped: Ann 🔥5 · Bo 🔥2/);
+    });
+    await withPlan(hang({ plan_day: TODAY, parts: [{ name: 'Dinner', time: '11:00' }, { name: 'Drinks', time: '20:00' }] }), { name: 'Kai' }, async t => {
+      assert.match(await t.text('.hangbar'), /🎉 It’s on · started 11am/);
+    });
+  });
+
+  test('hype taps count up right away and go out in one batch', async () => {
+    const rpc = { hype_poll: (b, s) => { s.poll.hype.total += b.p_n; s.poll.hype.mine += b.p_n; return s.poll; } };
+    await withPlan(hang(), { name: 'Kai', rpc }, async t => {
+      for (let k = 0; k < 4; k++) await t.page.click('#hype');
+      assert.equal(await t.text('#hypen'), '11');
+      assert.deepEqual(await t.waitCall('hype_poll'), { p_code: CODE, p_voter_key: VOTER, p_n: 4, p_name: 'Kai' });
+      await t.page.waitForTimeout(100);
+      assert.equal(t.calls('hype_poll').length, 1);
+      assert.equal(await t.text('#hypen'), '11');
+    });
+  });
+
+  test('adding a photo: shrinks it, uploads into the plan’s folder, then puts it on the wall with the caption', async () => {
+    const rpc = { add_poll_photo: (b, s) => { s.poll.photos = [{ id: '00000000-0000-4000-8000-000000000009', path: b.p_path, name: b.p_name, caption: b.p_caption, at: NOW, mine: true }, ...s.poll.photos]; return s.poll; } };
+    await withPlan(hang(), { name: 'Kai', rpc }, async t => {
+      await t.page.setInputFiles('#photofile', { name: 'selfie.png', mimeType: 'image/png', buffer: PNG });
+      await t.page.fill('#ph-cap', 'Pregame 🍻');
+      await t.page.click('#ph-ok');
+      const up = await t.waitCall('upload');
+      assert.match(up.path, new RegExp(`^plan-photos/${CODE}/[0-9a-f-]{36}\\.jpg$`));
+      assert.equal(up.type, 'image/jpeg');
+      const add = await t.waitCall('add_poll_photo');
+      assert.equal(add.p_path, up.path.replace('plan-photos/', ''));
+      assert.equal(add.p_caption, 'Pregame 🍻'); assert.equal(add.p_name, 'Kai');
+      await t.page.waitForSelector('.pthumb[data-photo="0"]');
+      assert.equal(await count(t, '.askname'), 0, 'the sheet closes');
+    });
+  });
+
+  test('a failed upload says so and adds nothing', async () => {
+    await withPlan(hang(), { name: 'Kai', uploadFails: true }, async t => {
+      await t.page.setInputFiles('#photofile', { name: 'a.png', mimeType: 'image/png', buffer: PNG });
+      await t.page.click('#ph-ok');
+      assert.match(await t.waitDialog(), /Couldn't post that/);
+      assert.equal(t.calls('add_poll_photo').length, 0);
+    });
+  });
+
+  test('a photo opens big; friends can report it, the person who posted it can take it down', async () => {
+    const rpc = {
+      report_poll_photo: (b, s) => { s.poll.photos = s.poll.photos.filter(x => x.id !== b.p_id); return s.poll; },
+      remove_poll_photo: (b, s) => { s.poll.photos = s.poll.photos.filter(x => x.id !== b.p_id); return s.poll; },
+    };
+    await withPlan(hang({ photos: [ph(1, { caption: 'The view' }), ph(2, { name: 'Kai', mine: true })] }), { name: 'Kai', rpc }, async t => {
+      await t.page.click('.pthumb[data-photo="0"]');
+      assert.match(await t.text('.lightbox'), /The view[^]*📸 Ann/);
+      assert.equal(await count(t, '[data-lb="rm"]'), 0);
+      await t.page.click('[data-lb="next"]');
+      assert.equal(await count(t, '[data-lb="report"]'), 0, 'no report on your own photo');
+      await t.page.click('[data-lb="rm"]');
+      assert.deepEqual(await t.waitCall('remove_poll_photo'), { p_code: CODE, p_voter_key: VOTER, p_id: ph(2).id });
+      await t.page.waitForFunction(() => !document.querySelector('.lightbox'));
+      await t.page.click('.pthumb[data-photo="0"]');
+      await t.page.click('[data-lb="report"]');
+      assert.deepEqual(await t.waitCall('report_poll_photo'), { p_code: CODE, p_voter_key: VOTER, p_id: ph(1).id });
+      await t.page.waitForFunction(() => !document.querySelector('.pthumb'));
+    });
+  });
+
+  test('an organizer can take down anyone’s photo', async () => {
+    await withPlan(hang({ photos: [ph(1)], is_creator: true, is_organizer: true }), { name: 'Kai' }, async t => {
+      await t.page.click('.pthumb[data-photo="0"]');
+      assert.equal(await count(t, '[data-lb="rm"]'), 1);
+    });
+  });
+
+  test('Night Out Dash: catches score, the bill costs, and the score is saved to the leaderboard', async () => {
+    const rpc = { submit_poll_score: (b, s) => { s.poll.scores = [{ game: 'dash', name: 'Kai', best: b.p_score, plays: 1, mine: true }, { game: 'dash', name: 'Ann', best: 3, plays: 2, mine: false }]; return s.poll; } };
+    await withPlan(hang({ scores: [{ game: 'dash', name: 'Ann', best: 3, plays: 2, mine: false }] }), { name: 'Kai', rpc }, async t => {
+      assert.match(await t.text('#hangout'), /🥇 Ann\s*3/);
+      await t.page.click('#playdash');
+      await t.page.click('#g-go');
+      await t.page.evaluate(() => { const d = document.querySelector('.game').__dash; d.hitKind('⭐'); d.hitKind('🍹'); d.hitKind('🧾'); d.hitKind('🎟️'); });
+      assert.equal(await t.text('#g-score'), '5');
+      await t.page.evaluate(() => document.querySelector('.game').__dash.end());
+      assert.deepEqual(await t.waitCall('submit_poll_score'), { p_code: CODE, p_voter_key: VOTER, p_game: 'dash', p_score: 5, p_name: 'Kai' });
+      await t.page.waitForFunction(() => /top of the plan/.test(document.getElementById('g-saved')?.textContent || ''));
+      await t.page.click('#g-done');
+      assert.equal(await count(t, '.game'), 0);
+      assert.match(await t.text('#hangout'), /🥇 Kai \(you\)\s*5/);
+      assert.match(await t.text('#playdash'), /your best 5/);
+    });
+  });
+
+  test('older databases: no hangout', async () => {
+    await withPlan(dinnerDrinks(), { name: 'Kai' }, async t => {
+      assert.equal(await count(t, '.hangbar'), 0);
+      assert.equal(await count(t, '#hangout'), 0);
+    });
+  });
+});

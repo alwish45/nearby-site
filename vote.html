@@ -138,6 +138,39 @@
   .tixrow a { color:#c2410c; font-weight:800; text-decoration:none; }
   .dayplan { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin:-2px 0 12px; padding:0 4px; }
   .autoline { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:0 0 8px; padding:8px 12px; border-radius:12px; background:#fff1e6; font-weight:700; font-size:15px; text-align:left; }
+  .hangbar { background:linear-gradient(135deg,#fff1e6,#ffe4f1 60%,#ede9fe); border:1.5px solid #f6d7c3; border-radius:16px; padding:12px 14px; margin:4px 0 12px; }
+  .hangbar .cd { font-weight:800; font-size:18px; margin:0 0 8px; }
+  .hangrow { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
+  .hypebtn { font:inherit; font-weight:800; font-size:16px; color:#fff; background:linear-gradient(135deg,#e8542a,#db2777); border:0; border-radius:999px; padding:10px 15px; cursor:pointer; min-height:44px; touch-action:manipulation; user-select:none; -webkit-user-select:none; }
+  .hypebtn:active { transform:scale(.94); }
+  .hangchip { display:inline-block; font-weight:700; font-size:14px; color:var(--ink); background:#fff; border:1.5px solid var(--line); border-radius:999px; padding:10px 12px; text-decoration:none; }
+  .floaty { position:fixed; z-index:60; font-size:26px; pointer-events:none; animation:floatup 1.1s ease-out forwards; }
+  @keyframes floatup { from { transform:translateY(0) scale(.8); opacity:1; } to { transform:translateY(-120px) scale(1.4); opacity:0; } }
+  .hangout { background:linear-gradient(180deg,#fff,#fffaf5); }
+  .hsub { font-weight:800; font-size:16px; margin:0 0 6px; }
+  .pgrid { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin:0 0 8px; }
+  .pthumb { display:block; padding:0; border:0; background:#eee; border-radius:10px; overflow:hidden; aspect-ratio:1; cursor:pointer; }
+  .pthumb img { width:100%; height:100%; object-fit:cover; display:block; }
+  .photoadd { display:block; text-align:center; cursor:pointer; }
+  .board { margin:0 0 10px; }
+  .brow { display:flex; justify-content:space-between; padding:6px 8px; border-radius:8px; }
+  .brow.me { background:var(--soft); }
+  .lightbox { position:fixed; inset:0; z-index:70; background:rgba(10,8,6,.94); display:flex; align-items:center; justify-content:center; padding:16px; }
+  .lbin { max-width:560px; width:100%; color:#faf8f4; }
+  .lbin img { width:100%; max-height:70vh; object-fit:contain; border-radius:12px; display:block; }
+  .lbcap { margin:10px 2px; }
+  .lbrow { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .lbrow button, .lbrow a { font:inherit; font-weight:700; color:#faf8f4; background:rgba(255,255,255,.12); border:0; border-radius:999px; padding:10px 14px; text-decoration:none; cursor:pointer; min-height:44px; }
+  .game { position:fixed; inset:0; z-index:80; background:radial-gradient(circle at 30% 20%,#3b1d5e,#14110d 70%); color:#faf8f4; display:flex; flex-direction:column; touch-action:none; }
+  .game.shake { animation:shake .3s; }
+  @keyframes shake { 25% { transform:translateX(-8px); } 75% { transform:translateX(8px); } }
+  .ghead { display:flex; justify-content:space-between; align-items:center; padding:14px 16px; font-weight:800; font-size:22px; }
+  .ghead button { font:inherit; font-size:20px; color:#faf8f4; background:rgba(255,255,255,.12); border:0; border-radius:999px; width:44px; height:44px; cursor:pointer; }
+  .game canvas { flex:1; width:100%; display:block; }
+  .gstart { position:absolute; inset:0; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:12px; text-align:center; padding:24px; background:rgba(20,17,13,.7); }
+  .gstart .t { font-size:28px; font-weight:800; }
+  .gstart .downbtn { max-width:280px; }
+  @media (prefers-reduced-motion: reduce) { .floaty, .game.shake { animation:none; } .floaty { display:none; } }
   .lockbox { margin:0 0 14px; text-align:left; }
   .lockbtn { display:block; width:100%; font:inherit; font-size:17px; font-weight:800; color:#fff; background:var(--ink); border:0; border-radius:14px; padding:14px; cursor:pointer; }
   .newbar { display:block; margin:0 0 10px; padding:10px 12px; border-radius:12px; background:#fff1e6; color:#9a3412; font-weight:800; text-decoration:none; text-align:left; }
@@ -409,6 +442,7 @@ function render() {
     ${!isOrg() && !poll.closed ? '<p class="who" style="text-align:left;margin:-6px 0 6px">A friend is planning something on near.by and wants your say.</p>' : ''}
     ${notUtahZone() ? '<p class="who" style="text-align:left;margin:0 0 8px">🕐 Times are Utah time (MT).</p>' : ''}
     ${peopleHtml()}
+    ${hangbarHtml(fullyClosed)}
     ${poll.is_creator && !poll.closed && !poll.final ? '<button class="downbtn" id="invitemore" style="margin:4px 0 12px">📣 Send the link to friends</button>' : ''}
     <p class="sub">${invite
       ? (poll.closed ? 'This invite has closed.' : rsvpShown ? 'Tap “I’m in” if you’re coming. No app needed.' : 'Tap “I’m down” if you’re in. No app needed.')
@@ -472,6 +506,7 @@ function render() {
       <div class="m">${(poll.down || []).length ? esc(poll.down.join(', ')) : parted ? 'Tap if you’re in for the night.' : `Tap if you’re in for ${esc(poll.options[go].business || 'the winner')}.`}</div>
       <button class="downbtn ${poll.i_am_down ? 'on' : ''}" id="downbtn" ${fullyClosed ? 'disabled' : ''}>${poll.i_am_down ? '✓ You’re down (tap to undo)' : 'I’m down 🙌'}</button>
     </div>` : ''}
+    ${hangoutHtml(fullyClosed)}
     ${activityHtml()}
     ${notesHtml(nameCard || savedName ? null : '', typedNote)}
     ${stopHtml()}
@@ -489,6 +524,7 @@ function render() {
   document.getElementById('invitemore')?.addEventListener('click', inviteMore);
   document.getElementById('chname')?.addEventListener('click', () => { nameAsk = true; render(); document.getElementById('name')?.focus(); });
   document.getElementById('ics')?.addEventListener('click', downloadIcs);
+  bindHangout();
   document.getElementById('raincheck')?.addEventListener('click', setRainCheck);
   document.getElementById('rainplan')?.addEventListener('click', rainCheckPlan);
   app.querySelectorAll('[data-late]').forEach(b => b.addEventListener('click', () => setLate(Number(b.dataset.late) || null)));
@@ -1983,6 +2019,290 @@ async function inviteMore() {
   try { await navigator.clipboard.writeText(text); alert('Copied the invite. Paste it in your group chat.'); }
   catch { prompt('Copy the invite:', text); }
 }
+// ---------------------------------------------------------------------------
+// The hangout: a countdown and hype meter at the top, and a photo wall and a
+// mini-game with a leaderboard for the plan (scripts/add_plan_hangout.sql in
+// the app repo). Older databases without these just don't show them.
+const STORAGE = API.replace('/rest/v1/rpc/', '/storage/v1/');
+const photoUrl = path => `${STORAGE}object/public/plan-photos/${path.split('/').map(encodeURIComponent).join('/')}`;
+let hypePending = 0, hypeTimer = null, photosAll = false;
+
+// When the plan starts (Utah time): the day it's set for and its first stop's time.
+function startsAt() {
+  const d = planDayOf();
+  if (!d) return null;
+  const ps = (poll.parts || []).filter(p => partDay(p) === d && p.time).map(p => String(p.time).slice(0, 5)).sort();
+  const t = ps[0] || (poll.final && poll.final.time) || null;
+  return { d, t };
+}
+// "⏳ 2 days 4 hrs to go", "🎉 It's on", or nothing once it's over.
+function countdownText() {
+  const s = startsAt();
+  if (!s) return '';
+  const now = utahNow(), today = isoDay(now);
+  const days = Math.round((new Date(s.d + 'T12:00:00') - new Date(today + 'T12:00:00')) / 864e5);
+  const nowM = now.getHours() * 60 + now.getMinutes();
+  const startM = s.t ? Number(s.t.slice(0, 2)) * 60 + Number(s.t.slice(3, 5)) : null;
+  if (days < 0) return '';
+  if (startM == null) return days === 0 ? '🎉 It’s today!' : days === 1 ? '⏳ Tomorrow!' : `⏳ ${days} days to go`;
+  const left = days * 1440 + startM - nowM;
+  if (left <= 0) return left > -360 ? `🎉 It’s on · started ${t12(s.t)}` : '';
+  if (left < 60) return `⏳ ${left} min to go!`;
+  if (left < 1440) { const h = Math.floor(left / 60), m = left % 60; return `⏳ ${h} hr${h === 1 ? '' : 's'}${m ? ` ${m} min` : ''} to go`; }
+  const dd = Math.floor(left / 1440), h = Math.floor((left % 1440) / 60);
+  return `⏳ ${dd} day${dd === 1 ? '' : 's'}${h ? ` ${h} hr${h === 1 ? '' : 's'}` : ''} to go`;
+}
+function hangbarHtml(fullyClosed) {
+  if (!('hype' in poll) || fullyClosed) return '';
+  const h = poll.hype || { total: 0, top: [] }, total = (h.total || 0) + hypePending;
+  const cd = countdownText();
+  const photos = (poll.photos || []).length;
+  return `<div class="hangbar">
+    ${cd ? `<div class="cd">${esc(cd)}</div>` : ''}
+    <div class="hangrow">
+      <button class="hypebtn" id="hype" aria-label="Hype it up: tap as much as you like">🔥 Hype <b id="hypen">${total}</b></button>
+      <a class="hangchip" href="#hangout">📸 ${photos ? `${photos} photo${photos === 1 ? '' : 's'}` : 'Photos'}</a>
+      <a class="hangchip" href="#hangout-game">🎮 Play</a>
+    </div>
+    ${(h.top || []).length ? `<div class="who" style="margin:6px 0 0">Most hyped: ${h.top.map(x => `${esc(x.name)} 🔥${x.n}`).join(' · ')}</div>` : '<div class="who" style="margin:6px 0 0">Tap 🔥 to get everyone hyped. Tap as much as you like.</div>'}
+  </div>`;
+}
+// Hype: show it right away, send the taps in a batch.
+function hype(ev) {
+  hypePending++;
+  const n = document.getElementById('hypen');
+  if (n) n.textContent = String(((poll.hype && poll.hype.total) || 0) + hypePending);
+  burst(ev, ['🔥', '🎉', '🙌', '✨', '🥳'][Math.floor(Math.random() * 5)]);
+  clearTimeout(hypeTimer);
+  hypeTimer = setTimeout(sendHype, hypePending >= 50 ? 0 : 900);
+}
+async function sendHype() {
+  const n = Math.min(50, hypePending);
+  if (!n) return;
+  hypePending -= n;
+  try { const fresh = await rpc('hype_poll', { p_code: code, p_voter_key: me, p_n: n, p_name: myName() }); poll = fresh; lastWrite = Date.now(); if (!typingIn()) render(); }
+  catch { /* hype is for fun: a missed batch doesn't matter */ }
+  if (hypePending) hypeTimer = setTimeout(sendHype, 300);
+}
+// Emoji that float up from where you tapped.
+function burst(ev, emoji, count = 1) {
+  const r = ev && ev.currentTarget ? ev.currentTarget.getBoundingClientRect() : { left: innerWidth / 2, top: innerHeight / 2, width: 0 };
+  for (let k = 0; k < count; k++) {
+    const e = document.createElement('span');
+    e.className = 'floaty';
+    e.textContent = emoji;
+    e.style.left = `${r.left + r.width / 2 - 12 + (Math.random() * 60 - 30)}px`;
+    e.style.top = `${r.top - 4}px`;
+    document.body.appendChild(e);
+    setTimeout(() => e.remove(), 1100);
+  }
+}
+
+// The hangout box: the photo wall and the game.
+function hangoutHtml(fullyClosed) {
+  if (!('photos' in poll)) return '';
+  const photos = poll.photos || [], shown = photosAll ? photos : photos.slice(0, 9);
+  const canAdd = !fullyClosed && photos.length < 60;
+  const board = (poll.scores || []).filter(s => s.game === 'dash');
+  const mineS = board.find(s => s.mine);
+  const medal = k => ['🥇', '🥈', '🥉'][k] || `${k + 1}.`;
+  return `<div class="box hangout" id="hangout"><h2>🎉 The hangout</h2>
+    <div class="who" style="margin:0 0 10px">Everyone with the link can add photos, play and hype it up.</div>
+    <div class="hsub">📸 Photos</div>
+    ${photos.length ? `<div class="pgrid">${shown.map((ph, k) => `<button class="pthumb" data-photo="${k}" aria-label="Photo from ${esc(ph.name)}${ph.caption ? ': ' + esc(ph.caption) : ''}"><img src="${esc(photoUrl(ph.path))}" alt="" loading="lazy"></button>`).join('')}</div>
+      ${photos.length > 9 ? `<button class="linkbtn" id="photomore">${photosAll ? 'Show fewer' : `Show all ${photos.length}`}</button>` : ''}`
+      : '<div class="who" style="margin:0 0 8px">No photos yet. Pregame selfies, outfit checks, the view: share the vibe.</div>'}
+    ${canAdd ? '<label class="downbtn photoadd" for="photofile">📸 Add photos</label><input type="file" id="photofile" accept="image/*" multiple hidden>' : ''}
+    <div class="hsub" id="hangout-game" style="margin-top:16px">🎮 Night Out Dash</div>
+    <div class="who" style="margin:0 0 8px">Catch the tacos, drinks and tickets. Dodge the bill 🧾. ${GAME_SECS} seconds. Best score on the plan wins bragging rights.</div>
+    ${board.length ? `<div class="board">${board.slice(0, 10).map((s, k) => `<div class="brow ${s.mine ? 'me' : ''}"><span>${medal(k)} ${esc(s.name)}${s.mine ? ' (you)' : ''}</span><b>${s.best}</b></div>`).join('')}</div>` : '<div class="who" style="margin:0 0 8px">No scores yet. Set the bar.</div>'}
+    <button class="downbtn" id="playdash" ${fullyClosed ? 'disabled' : ''}>${mineS ? `▶ Play again · your best ${mineS.best}` : '▶ Play'}</button>
+  </div>`;
+}
+function bindHangout() {
+  document.getElementById('hype')?.addEventListener('click', hype);
+  document.getElementById('photomore')?.addEventListener('click', () => { photosAll = !photosAll; render(); });
+  app.querySelectorAll('[data-photo]').forEach(b => b.addEventListener('click', () => openPhoto(Number(b.dataset.photo))));
+  document.getElementById('photofile')?.addEventListener('change', e => { const fs = [...(e.target.files || [])]; e.target.value = ''; if (fs.length) pickPhotos(fs); });
+  document.getElementById('playdash')?.addEventListener('click', playDash);
+}
+
+// Photos: shrink to a small JPEG in the browser, then upload.
+function shrink(file, max = 1600) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file), img = new Image();
+    img.onload = () => {
+      const k = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+      const c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(img.naturalWidth * k)); c.height = Math.max(1, Math.round(img.naturalHeight * k));
+      c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      const out = q => c.toBlob(b => (b && b.size > 1.4e6 && q > 0.45 ? out(q - 0.15) : b ? resolve(b) : reject(new Error('no image'))), 'image/jpeg', q);
+      out(0.82);
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('not an image')); };
+    img.src = url;
+  });
+}
+const uuid = () => (crypto.randomUUID ? crypto.randomUUID() : 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r = Math.random() * 16 | 0; return (c === 'x' ? r : (r & 3) | 8).toString(16); }));
+async function pickPhotos(files) {
+  files = files.filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|heic|heif|webp|gif)$/i.test(f.name)).slice(0, 6);
+  if (!files.length) { alert('Pick a photo.'); return; }
+  if (!(await askNameFirst())) return;
+  const box = document.createElement('div');
+  box.className = 'askname';
+  const urls = files.map(f => URL.createObjectURL(f));
+  box.innerHTML = `<div class="sheet" role="dialog" aria-modal="true" aria-labelledby="ph-t"><div class="t" id="ph-t">📸 Add ${files.length === 1 ? 'this photo' : `${files.length} photos`}</div>
+    <div class="pgrid" style="margin:10px 0">${urls.map(u => `<div class="pthumb"><img src="${u}" alt=""></div>`).join('')}</div>
+    <input id="ph-cap" maxlength="140" placeholder="Say something (optional)">
+    <div class="who" style="margin:-4px 0 10px">Everyone with the plan’s link can see it. You can take it down later.</div>
+    <button class="downbtn" id="ph-ok">Post</button>
+    <button class="linkbtn" id="ph-no" style="display:block;margin:10px auto 0">Cancel</button></div>`;
+  document.body.appendChild(box);
+  const close = () => { box.remove(); urls.forEach(u => URL.revokeObjectURL(u)); };
+  box.addEventListener('click', e => { if (e.target === box) close(); });
+  box.querySelector('#ph-no').addEventListener('click', close);
+  box.querySelector('#ph-ok').addEventListener('click', async () => {
+    const btn = box.querySelector('#ph-ok'), cap = box.querySelector('#ph-cap').value.trim();
+    btn.disabled = true;
+    let done = 0, failed = 0;
+    for (const [k, f] of files.entries()) {
+      btn.textContent = `Posting ${k + 1} of ${files.length}…`;
+      try {
+        const blob = await shrink(f);
+        const path = `${code}/${uuid()}.jpg`;
+        const r = await fetch(`${STORAGE}object/plan-photos/${path}`, { method: 'POST', headers: { apikey: KEY, 'Content-Type': 'image/jpeg', 'x-upsert': 'false' }, body: blob });
+        if (!r.ok) throw new Error('upload ' + r.status);
+        poll = await rpc('add_poll_photo', { p_code: code, p_voter_key: me, p_path: path, p_caption: k === 0 ? cap || null : null, p_name: myName() });
+        done++;
+      } catch (e) { failed++; if (/60 photos|too many/.test(e.message)) break; }
+    }
+    lastWrite = Date.now();
+    close();
+    render();
+    if (done) { toast(done === 1 ? '📸 Posted' : `📸 Posted ${done} photos`); document.getElementById('hangout')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    if (failed) alert(done ? `${failed} didn’t post. Try those again.` : "Couldn't post that. Check your signal and try again.");
+  });
+}
+// A photo, big, with who posted it; take it down (yours, or as an organizer) or report it.
+function openPhoto(k) {
+  const photos = poll.photos || [];
+  const ph = photos[k];
+  if (!ph) return;
+  const box = document.createElement('div');
+  box.className = 'lightbox';
+  box.innerHTML = `<div class="lbin" role="dialog" aria-modal="true" aria-label="Photo from ${esc(ph.name)}">
+    <img src="${esc(photoUrl(ph.path))}" alt="${esc(ph.caption || 'Photo from ' + ph.name)}">
+    <div class="lbcap">${ph.caption ? `<div>${esc(ph.caption)}</div>` : ''}<div class="who" style="color:#d6d0c6">📸 ${esc(ph.name)} · ${esc(agoText(ph.at))}</div></div>
+    <div class="lbrow">
+      ${k > 0 ? '<button data-lb="prev" aria-label="Previous photo">‹</button>' : '<span></span>'}
+      <a href="${esc(photoUrl(ph.path))}" target="_blank" rel="noopener">⬇ Save</a>
+      ${ph.mine || isOrg() ? '<button data-lb="rm">🗑 Take down</button>' : '<button data-lb="report">🚩 Report</button>'}
+      <button data-lb="x" aria-label="Close">✕</button>
+      ${k < photos.length - 1 ? '<button data-lb="next" aria-label="Next photo">›</button>' : '<span></span>'}
+    </div></div>`;
+  document.body.appendChild(box);
+  const close = () => { box.remove(); document.removeEventListener('keydown', key); };
+  const key = e => { if (e.key === 'Escape') close(); if (e.key === 'ArrowRight' && k < photos.length - 1) { close(); openPhoto(k + 1); } if (e.key === 'ArrowLeft' && k > 0) { close(); openPhoto(k - 1); } };
+  document.addEventListener('keydown', key);
+  box.addEventListener('click', async e => {
+    const a = e.target.closest('[data-lb]')?.dataset.lb;
+    if (e.target === box || a === 'x') return close();
+    if (a === 'prev') { close(); return openPhoto(k - 1); }
+    if (a === 'next') { close(); return openPhoto(k + 1); }
+    if (a === 'rm') {
+      if (!confirm(ph.mine ? 'Take your photo down?' : `Take down ${ph.name}’s photo? It comes off the plan for everyone.`)) return;
+      try { poll = await rpc('remove_poll_photo', { p_code: code, p_voter_key: me, p_id: ph.id }); lastWrite = Date.now(); close(); render(); toast('Taken down'); }
+      catch { alert("Couldn't take it down. Try again."); }
+    }
+    if (a === 'report') {
+      if (!confirm('Report this photo? It’s hidden for you, and if someone else reports it too it comes down for everyone.')) return;
+      try { poll = await rpc('report_poll_photo', { p_code: code, p_voter_key: me, p_id: ph.id }); lastWrite = Date.now(); close(); render(); toast('Reported · thanks'); }
+      catch { alert("Couldn't report it. Try again."); }
+    }
+  });
+}
+
+// Night Out Dash: tap the good stuff as it falls; the bill costs you.
+const GAME_SECS = 25;
+const DASH_ITEMS = [
+  { e: '🌮', pts: 1, w: 5 }, { e: '🍕', pts: 1, w: 5 }, { e: '🍺', pts: 1, w: 5 }, { e: '🍹', pts: 2, w: 3 },
+  { e: '🎟️', pts: 3, w: 2 }, { e: '🎶', pts: 2, w: 2 }, { e: '⭐', pts: 5, w: 1 }, { e: '🧾', pts: -5, w: 4 },
+];
+function playDash() {
+  if (document.querySelector('.game')) return;
+  const secs = window.__gameSecs || GAME_SECS;
+  const box = document.createElement('div');
+  box.className = 'game';
+  box.innerHTML = `<div class="ghead"><span id="g-score">0</span><span id="g-time">${secs}s</span><button id="g-x" aria-label="Stop playing">✕</button></div>
+    <canvas id="g-c" aria-label="Night Out Dash: tap the falling food, drinks and tickets, not the bill"></canvas>
+    <div class="gstart" id="g-start"><div class="t">🎮 Night Out Dash</div><div>Tap 🌮 🍕 🍺 🍹 🎶 🎟️ ⭐ as they fall.<br>Don’t tap the bill 🧾 (−5).</div><button class="downbtn" id="g-go">Go!</button></div>`;
+  document.body.appendChild(box);
+  document.body.style.overflow = 'hidden';
+  const cv = box.querySelector('#g-c'), ctx = cv.getContext('2d');
+  const fit = () => { const r = cv.getBoundingClientRect(), dpr = devicePixelRatio || 1; cv.width = r.width * dpr; cv.height = r.height * dpr; ctx.setTransform(dpr, 0, 0, dpr, 0, 0); };
+  fit();
+  let items = [], pops = [], score = 0, t0 = null, last = 0, spawnIn = 0, raf = null, over = false, running = false;
+  const W = () => cv.getBoundingClientRect().width, H = () => cv.getBoundingClientRect().height;
+  const pick = () => { const tot = DASH_ITEMS.reduce((a, x) => a + x.w, 0); let r = Math.random() * tot; for (const x of DASH_ITEMS) { if ((r -= x.w) < 0) return x; } return DASH_ITEMS[0]; };
+  const end = async () => {
+    over = true; running = false; cancelAnimationFrame(raf);
+    const best = ((poll.scores || []).find(s => s.game === 'dash' && s.mine) || {}).best || 0;
+    const st = box.querySelector('#g-start');
+    st.style.display = '';
+    st.innerHTML = `<div class="t">${score > best && best ? '🏆 New best!' : score >= 30 ? '🔥 Nice!' : '⏱ Time!'}</div><div style="font-size:42px;font-weight:800">${score}</div>
+      <div id="g-saved" class="who" style="color:#d6d0c6">Saving your score…</div>
+      <button class="downbtn" id="g-again">Play again</button><button class="linkbtn" id="g-done" style="display:block;margin:10px auto 0;color:#faf8f4">Back to the plan</button>`;
+    st.querySelector('#g-again').addEventListener('click', start);
+    st.querySelector('#g-done').addEventListener('click', quit);
+    try {
+      poll = await rpc('submit_poll_score', { p_code: code, p_voter_key: me, p_game: 'dash', p_score: Math.max(0, Math.min(999, score)), p_name: myName() });
+      lastWrite = Date.now();
+      const board = (poll.scores || []).filter(s => s.game === 'dash'), rank = board.findIndex(s => s.mine);
+      const el = box.querySelector('#g-saved');
+      if (el) el.textContent = rank === 0 ? '🥇 You’re top of the plan!' : rank > 0 ? `You’re #${rank + 1} on the plan · top is ${board[0].name} with ${board[0].best}` : 'Saved';
+    } catch { const el = box.querySelector('#g-saved'); if (el) el.textContent = 'Couldn’t save the score.'; }
+  };
+  const frame = ts => {
+    if (!running) return;
+    if (t0 == null) { t0 = ts; last = ts; }
+    const dt = Math.min(0.05, (ts - last) / 1000), el = (ts - t0) / 1000; last = ts;
+    const left = Math.max(0, secs - el);
+    box.querySelector('#g-time').textContent = `${Math.ceil(left)}s`;
+    const speed = 1 + el / secs * 1.3;
+    spawnIn -= dt;
+    if (spawnIn <= 0) { const x = pick(); items.push({ ...x, x: 28 + Math.random() * (W() - 56), y: -30, v: (110 + Math.random() * 90) * speed, r: 26 }); spawnIn = Math.max(0.22, 0.62 / speed); }
+    ctx.clearRect(0, 0, W(), H());
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.font = '40px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+    items = items.filter(it => { it.y += it.v * dt; ctx.fillText(it.e, it.x, it.y); return it.y < H() + 40; });
+    ctx.font = 'bold 22px system-ui, sans-serif';
+    pops = pops.filter(p => { p.t -= dt; p.y -= 40 * dt; ctx.globalAlpha = Math.max(0, p.t / 0.7); ctx.fillStyle = p.pts > 0 ? '#86efac' : '#fca5a5'; ctx.fillText(`${p.pts > 0 ? '+' : ''}${p.pts}`, p.x, p.y); ctx.globalAlpha = 1; return p.t > 0; });
+    if (left <= 0) return end();
+    raf = requestAnimationFrame(frame);
+  };
+  const tap = e => {
+    if (!running) return;
+    const r = cv.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
+    let hit = -1, bestD = 1e9;
+    items.forEach((it, k) => { const d = Math.hypot(it.x - x, it.y - y); if (d < it.r + 14 && d < bestD) { bestD = d; hit = k; } });
+    if (hit < 0) return;
+    const it = items.splice(hit, 1)[0];
+    score = Math.max(0, score + it.pts);
+    pops.push({ x: it.x, y: it.y, pts: it.pts, t: 0.7 });
+    box.querySelector('#g-score').textContent = String(score);
+    if (it.pts < 0) { box.classList.remove('shake'); void box.offsetWidth; box.classList.add('shake'); }
+    if (navigator.vibrate) navigator.vibrate(it.pts < 0 ? 60 : 12);
+  };
+  const start = () => { items = []; pops = []; score = 0; t0 = null; spawnIn = 0; over = false; running = true; box.querySelector('#g-score').textContent = '0'; box.querySelector('#g-start').style.display = 'none'; fit(); raf = requestAnimationFrame(frame); };
+  const quit = () => { running = false; cancelAnimationFrame(raf); box.remove(); document.body.style.overflow = ''; window.removeEventListener('resize', fit); render(); };
+  window.removeEventListener('resize', fit); window.addEventListener('resize', fit);
+  cv.addEventListener('pointerdown', tap);
+  box.querySelector('#g-go').addEventListener('click', start);
+  box.querySelector('#g-x').addEventListener('click', () => { if (running && !over && score > 0 && !confirm('Stop playing? This score won’t count.')) return; quit(); });
+  // For tests: score a tap on an item by kind, and end the round now.
+  box.__dash = { hitKind: e => { const k = items.findIndex(it => it.e === e); if (k < 0) items.push({ ...DASH_ITEMS.find(x => x.e === e), x: 50, y: 50, v: 0, r: 26 }); const it = items.find(x => x.e === e); tap({ clientX: cv.getBoundingClientRect().left + it.x, clientY: cv.getBoundingClientRect().top + it.y }); }, end: () => end() };
+}
+
 function peopleHtml() {
   const names = [];
   const add = n => { const t = String(n || '').trim(); if (t && t !== 'Someone' && !names.includes(t)) names.push(t); };
