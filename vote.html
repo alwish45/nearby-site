@@ -1500,12 +1500,16 @@ function bindPartTimes() {
 }
 // Someone may have added or removed a stop since the last refresh: check the
 // stops are where they were before acting on one by its number.
-let checkingStops = false;
-async function stopsUnchanged() {
-  if (checkingStops) return false;
-  checkingStops = true;
+// A quick second tap while a check is running shares that check instead of
+// doing nothing (taps used to be dropped silently).
+let stopsCheck = null;
+function stopsUnchanged() {
+  if (!stopsCheck) stopsCheck = checkStops().finally(() => { stopsCheck = null; });
+  return stopsCheck;
+}
+async function checkStops() {
   let fresh = null;
-  try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { return true; } finally { checkingStops = false; }
+  try { fresh = await rpc('get_poll', { p_code: code, p_voter_key: me }); } catch { return true; }
   // Each stop's name, day and time: a stop moved to another time renumbers the rest too.
   const names = x => (x?.parts || []).map(q => `${q.name}@${q.date || ''} ${q.time || ''}`).join('|');
   if (!fresh || names(fresh) === shownSig) return true;
@@ -2144,7 +2148,15 @@ function planCalLinks(only = null) {
   const len = mins(times[times.length - 1]) - mins(times[0]) + 120;
   const s0 = at(times[0], 0), s1 = at(times[0], len), c = x => x.replace(/[-:]/g, '');
   return { google: `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${e(title)}&dates=${c(s0)}/${c(s1)}&ctz=America/Denver&details=${e(details)}&location=${e(loc)}`,
-    outlook: `https://outlook.live.com/calendar/0/action/compose?path=%2Fcalendar%2Faction%2Fcompose&rru=addevent&subject=${e(title)}&startdt=${e(s0)}&enddt=${e(s1)}&body=${e(details)}&location=${e(loc)}` };
+    outlook: `https://outlook.live.com/calendar/0/action/compose?path=%2Fcalendar%2Faction%2Fcompose&rru=addevent&subject=${e(title)}&startdt=${e(denverToUtc(s0))}&enddt=${e(denverToUtc(s1))}&body=${e(details)}&location=${e(loc)}` };
+}
+// Outlook reads a time without a zone as the viewer's own: send Utah time as UTC
+// ("2026-11-28T19:00:00" in Denver -> "2026-11-29T02:00:00Z"), right for friends anywhere.
+function denverToUtc(local) {
+  const asUtc = new Date(local + 'Z');
+  const there = new Date(asUtc.toLocaleString('en-US', { timeZone: 'America/Denver' }));
+  const here = new Date(asUtc.toLocaleString('en-US', { timeZone: 'UTC' }));
+  return new Date(asUtc.getTime() + (here - there)).toISOString().slice(0, 19) + 'Z';
 }
 // A calendar file with one entry per stop (two hours each, Utah time).
 function downloadIcs() {
