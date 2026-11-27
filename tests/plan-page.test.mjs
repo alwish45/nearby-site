@@ -108,13 +108,23 @@ describe('page loads', () => {
     });
   });
 
-  test('a closed vote: says so, no adding, no notes box', async () => {
-    const poll = makePoll({ closed: true, closes_at: '2026-11-20T06:00:00Z', options: [opt(), opt()] });
+  test('a vote closed today: says so, no adding (notes stay open for a day)', async () => {
+    const poll = makePoll({ closed: true, closes_at: '2026-11-26T06:00:00Z', options: [opt(), opt()] });
     await withPlan(poll, async t => {
       assert.match(await t.text('.sub'), /This vote has closed\./);
       assert.equal(await count(t, '.opt[data-i]:not([disabled])'), 0);
       assert.equal(await count(t, '#fab'), 0);
       assert.equal(await count(t, '#stopopen'), 0);
+    });
+  });
+
+  test('ended days ago without being locked in: one "ended" card with how the votes stood', async () => {
+    const poll = makePoll({ closed: true, closes_at: '2026-11-20T06:00:00Z', options: [opt({ title: 'Tacos' }), opt({ title: 'Pho' })], counts: [1, 3] });
+    await withPlan(poll, async t => {
+      assert.match(await t.text('.summary'), /This plan has ended[\s\S]*Pho \(3\), Tacos \(1\)/);
+      assert.equal(await count(t, '.opt'), 0);
+      assert.equal(await count(t, '.rsvp'), 0);
+      assert.equal(await count(t, '#fab'), 0);
       assert.equal(await count(t, '#note'), 0);
     });
   });

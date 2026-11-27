@@ -5,6 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>You’re invited · near.by</title>
+<meta property="og:url" content="https://alwish45.github.io/nearby-site/vote.html">
+<meta property="og:image" content="https://alwish45.github.io/nearby-site/img/share.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" type="image/png" href="img/favicon.png">
+<link rel="apple-touch-icon" href="img/apple-touch-icon.png">
 <meta property="og:title" content="You’re invited: help make the plan 🗓️">
 <meta property="og:description" content="See the plan, vote on places and times, or suggest your own. No app or account needed.">
 <meta name="description" content="See the plan, vote on places and times, or suggest your own. No app or account needed.">
@@ -382,10 +389,20 @@ function render() {
     const t = Math.max(0, ...idxs.map(i => poll.counts[i] || 0)), l = idxs.filter(i => (poll.counts[i] || 0) === t);
     return t > 0 && l.length === 1 ? l[0] : -1;
   }) : [];
+  // Ended without being locked in: say so plainly, with how the votes stood.
+  if (fullyClosed && !final) {
+    const standing = poll.options.map((o, i) => ({ o, n: poll.counts[i] || 0 })).filter(x => x.n).sort((a, b) => b.n - a.n).slice(0, 5);
+    app.innerHTML = `<h1>${esc(poll.title || 'Plan')}</h1>
+      <div class="summary"><b>This plan has ended</b><div class="who" style="margin:4px 0 0">It closed without being locked in${planDayOf() ? `. It was for ${esc(day(planDayOf()))}` : ''}.</div>
+      ${standing.length ? `<div class="who" style="margin:8px 0 0">Most votes: ${standing.map(x => `${esc(x.o.title)} (${x.n})`).join(', ')}</div>` : ''}</div>`;
+    return;
+  }
   // "Are you in?" shows once there's somewhere to be in for.
   const rsvpShown = rsvpOn && (go >= 0 || parted || !!final || invite);
   app.innerHTML = `
     <h1>${esc(poll.title || (invite ? 'Who’s in?' : 'Where should we go?'))}</h1>
+    ${!isOrg() && !poll.closed ? '<p class="who" style="text-align:left;margin:-6px 0 6px">A friend is planning something on near.by and wants your say.</p>' : ''}
+    ${notUtahZone() ? '<p class="who" style="text-align:left;margin:0 0 8px">🕐 Times are Utah time (MT).</p>' : ''}
     ${peopleHtml()}
     ${poll.is_creator && !poll.closed && !poll.final ? '<button class="downbtn" id="invitemore" style="margin:4px 0 12px">📣 Send the link to friends</button>' : ''}
     <p class="sub">${invite
@@ -1248,9 +1265,12 @@ async function postNote(part = null) {
   render();
 }
 async function deleteNote(id) {
-  if (!confirm('Delete your note?')) return;
-  try { poll = await rpc('delete_poll_comment', { p_code: code, p_voter_key: me, p_id: id }); lastWrite = Date.now(); render(); }
+  if (saving || !confirm('Delete your note?')) return;
+  saving = true;
+  try { poll = await rpc('delete_poll_comment', { p_code: code, p_voter_key: me, p_id: id }); lastWrite = Date.now(); }
   catch { alert("Couldn't delete that. Try again."); }
+  saving = false;
+  render();
 }
 function myName() {
   const el = document.getElementById('name');
@@ -2037,7 +2057,9 @@ function planCalLinks(only = null) {
   const date = only || f.day || poll.plan_day || isoDay(utahNow());
   const rows = picks.map((i, k) => { const o = poll.options[i] || {}, p = Array.isArray(f.parts) ? poll.parts[k] : null; return { o, p, d: p ? partDay(p) : date, t: (p && p.time) || f.time || (o.start_time ? String(o.start_time).slice(0, 5) : null) }; });
   if (only) for (let x = rows.length - 1; x >= 0; x--) if (rows[x].d !== only) rows.splice(x, 1);
-  const times = rows.map(r => r.t).filter(Boolean).map(t => String(t).slice(0, 5)).sort();
+  // Times before 4am are the night's end (the next day), so a 12:30am stop sorts last.
+  const late = t => mins(t) + (mins(t) < 240 ? 1440 : 0);
+  const times = rows.map(r => r.t).filter(Boolean).map(t => String(t).slice(0, 5)).sort((a, b) => late(a) - late(b));
   const pad = n => String(n).padStart(2, '0');
   const at = (hhmm, plus) => { const [y, m, d] = date.split('-').map(Number), [h, mi] = hhmm.split(':').map(Number); const t = new Date(Date.UTC(y, m - 1, d, h, mi + plus)); return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}T${pad(t.getUTCHours())}:${pad(t.getUTCMinutes())}:00`; };
   const title = (poll.title || 'Plans') + (only && multiDay() ? ` (${wday(only)})` : ''), e = encodeURIComponent;
@@ -2049,8 +2071,8 @@ function planCalLinks(only = null) {
     return { google: `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${e(title)}&dates=${date.replace(/-/g, '')}/${next.replace(/-/g, '')}&details=${e(details)}&location=${e(loc)}`,
       outlook: `https://outlook.live.com/calendar/0/action/compose?path=%2Fcalendar%2Faction%2Fcompose&rru=addevent&subject=${e(title)}&allday=true&startdt=${date}&enddt=${next}&body=${e(details)}&location=${e(loc)}` };
   }
-  const len = mins(times[times.length - 1]) - mins(times[0]) + 120;
-  const s0 = at(times[0], 0), s1 = at(times[0], len), c = x => x.replace(/[-:]/g, '');
+  const len = late(times[times.length - 1]) - late(times[0]) + 120, shift = late(times[0]) >= 1440 ? 1440 : 0;
+  const s0 = at(times[0], shift), s1 = at(times[0], shift + len), c = x => x.replace(/[-:]/g, '');
   // Outlook reads a bare time in the viewer's zone: give it Utah's offset for that moment.
   const mt = x => { const [y, m, d, h, mi] = x.split(/[-T:]/).map(Number); const n = new Date(Date.UTC(y, m - 1, d, h + 7, mi)); const dst = new Intl.DateTimeFormat('en-US', { timeZone: 'America/Denver', timeZoneName: 'short' }).format(n).includes('MDT'); return x + (dst ? '-06:00' : '-07:00'); };
   return { google: `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${e(title)}&dates=${c(s0)}/${c(s1)}&ctz=America/Denver&details=${e(details)}&location=${e(loc)}`,
@@ -2092,6 +2114,13 @@ function foodVote() {
   });
 }
 
+// The viewer's clock isn't on Utah time right now (a friend out of town).
+function notUtahZone() {
+  try {
+    const f = z => new Intl.DateTimeFormat('en-US', { timeZone: z, hour: 'numeric', minute: 'numeric', hour12: false }).format(new Date());
+    return f(Intl.DateTimeFormat().resolvedOptions().timeZone) !== f('America/Denver');
+  } catch { return false; }
+}
 let loadFailed = false; // the first load didn't get through (weak signal), not a missing plan
 async function load() {
   if (!code) { render(); return; }
