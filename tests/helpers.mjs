@@ -59,6 +59,8 @@ export function nearRow(over = {}) {
     recurring_days: null, valid_from: null, valid_until: null, start_time: null, end_time: null, distance_m: 400 + dealSeq, latitude: 40.76, longitude: -111.89, ...over };
 }
 
+// A 1x1 PNG, for photos.
+const PIXEL = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+ip1sAAAAASUVORK5CYII=', 'base64');
 export const fail = message => ({ __status: 400, __body: { message } });
 
 const pday = (poll, p) => (p && p.date) || poll.plan_day || TODAY;
@@ -173,6 +175,13 @@ export async function openPlan(poll, opts = {}) {
       if (res && res.__status) return reply(res.__status, res.__body);
       if (res && typeof res === 'object' && !Array.isArray(res) && res.code && res !== state.poll && fn !== 'get_poll') state.poll = res;
       return reply(200, clone(res ?? null));
+    }
+    if (u.pathname.startsWith('/storage/v1/object/public/')) return route.fulfill({ status: 200, headers: { ...CORS, 'content-type': 'image/png' }, body: PIXEL });
+    if (u.pathname.startsWith('/storage/v1/object/') && req.method() === 'POST') {
+      const path = decodeURIComponent(u.pathname.slice('/storage/v1/object/'.length));
+      state.calls.push({ fn: 'upload', body: { path, type: req.headers()['content-type'], size: (req.postDataBuffer() || []).length } });
+      if (opts.uploadFails) return reply(400, { message: 'upload failed' });
+      return reply(200, { Key: path });
     }
     if (u.pathname === '/rest/v1/deals') { state.calls.push({ fn: 'deals', url }); return reply(200, state.deals); }
     return reply(404, { message: 'not found' });
