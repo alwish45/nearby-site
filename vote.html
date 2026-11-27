@@ -118,6 +118,9 @@
   .voting-as { color:var(--muted); font-size:14px; margin:0 0 10px; text-align:left; }
   .voting-as button { background:none; border:0; font:inherit; color:#c2410c; font-weight:800; cursor:pointer; padding:0; }
   .part-head { display:flex; align-items:center; gap:8px; margin:14px 0 8px; }
+  .pfold { all:unset; flex:1; display:flex; align-items:center; gap:8px; cursor:pointer; min-height:44px; }
+  .pchev { font-size:16px; color:#c2410c; font-weight:800; padding-left:4px; }
+  .pfoldsum { all:unset; display:block; box-sizing:border-box; width:100%; text-align:left; background:#fff; border:1.5px solid var(--line); border-radius:14px; padding:12px; margin:0 0 6px; cursor:pointer; }
   .pnum { width:24px; height:24px; border-radius:50%; background:var(--ink); color:#fff; font-weight:800; font-size:14px; display:inline-flex; align-items:center; justify-content:center; flex:none; }
   .pname { flex:1; font-size:18px; font-weight:800; text-align:left; }
   .pstate { font-size:14px; font-weight:700; color:#9a3412; }
@@ -410,7 +413,10 @@ function render() {
       const fixed = !!p && idxs.length === 1;
       const hop = p && pi > 0 && partDay(poll.parts[pi - 1]) === partDay(p) ? hopText(poll.options.filter(o => o.part === pi - 1), poll.options.filter(o => o.part === pi)) : null;
       const dhead = (hop ? `<div class="hopbetween">${esc(hop)}</div>` : '') + (p && showDays() && (pi === 0 || partDay(poll.parts[pi - 1]) !== partDay(p)) ? `<h3 class="dayhead">📅 ${esc(longDay(partDay(p)))}${partDay(p) >= isoDay(utahNow()) ? weatherHtml(partDay(p)) : ''}</h3>` : '');
-      const head = dhead + (p ? `<div class="part-head" id="step-part-${pi}"><span class="pnum">${pi + 1}</span><span class="pname">${p.time ? esc(t12(p.time)) : esc(p.name)}</span>${editing && p && isOrg() && !final && !poll.closed && poll.parts.length > 1 ? `<button class="rmstop" data-rmstop="${pi}" aria-label="Remove this stop">✕</button>` : ''}<span class="pstate">${final ? '✅ Set' : fixed ? (poll.options[idxs[0]].added_by ? `💡 From ${esc(poll.options[idxs[0]].added_by)}` : '') : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span></div>${'part_times' in poll && !final && !poll.closed ? partTimesHtml(pi, p) : ''}` : '');
+      const unfolded = !p || partOpen(pi, idxs);
+      const head = dhead + (p ? `<div class="part-head" id="step-part-${pi}"><button class="pfold" data-fold="${pi}" aria-expanded="${unfolded}"><span class="pnum">${pi + 1}</span><span class="pname">${p.time ? esc(t12(p.time)) : esc(p.name)}</span><span class="pstate">${final ? '✅ Set' : fixed ? (poll.options[idxs[0]].added_by ? `💡 From ${esc(poll.options[idxs[0]].added_by)}` : '') : w >= 0 ? '🏆 Leading' : secTop ? 'Tied' : 'Vote'}</span><span class="pchev">${unfolded ? '▴' : '▾'}</span></button>${editing && p && isOrg() && !final && !poll.closed && poll.parts.length > 1 ? `<button class="rmstop" data-rmstop="${pi}" aria-label="Remove this stop">✕</button>` : ''}</div>` : '');
+      if (!unfolded) return head + foldedHtml(pi, p, idxs, w, fixed, final);
+      const ptimes = p && 'part_times' in poll && !final && !poll.closed ? partTimesHtml(pi, p) : '';
       const opts = idxs.map(i => {
         const o = poll.options[i];
         const n = poll.counts[i] || 0, pct = people && !fixed ? Math.min(100, Math.round(n / people * 100)) : 0;
@@ -435,7 +441,7 @@ function render() {
       const open = adding && addPart === pi;
       const sug = poll.can_add && !final && (!p || idxs.length < 6)
         ? `<button class="suggest" data-suggest="${pi ?? ''}">${open ? 'Done' : p ? `＋ Suggest another place${p.time ? ` for ${esc(t12(p.time))}` : ''}` : '＋ Suggest another place'}</button>${open ? (p && 'part_times' in poll ? ownHtml(/walk|park|hang|something to do|activity/i.test(p.name)) : '') + picksHtml() : ''}` : '';
-      return head + opts + sug + (p ? threadHtml(pi, p) : '');
+      return head + ptimes + opts + sug + (p ? threadHtml(pi, p) : '');
     }).join('')}
     ${poll.how && !invite && !parted && !final && foodVote() ? `<div class="box"><h2>How should we do it?</h2><div class="how">${[['dine_in', '🍽️ Dine in'], ['pickup', '🛍️ Pickup'], ['delivery', '🚗 Delivery']].map(([k, l]) => `<button data-how="${k}" class="${poll.my_how === k ? 'on' : ''}" ${fullyClosed ? 'disabled' : ''}>${l}<b>${poll.how[k] || 0}</b></button>`).join('')}</div><div class="who">A head count for the group. Check with the place that it offers pickup or delivery.</div></div>` : ''}
     ${parted || final ? '' : whenHtml(invite ? 0 : win)}
@@ -472,6 +478,7 @@ function render() {
   app.querySelectorAll('[data-movenew]').forEach(b => b.addEventListener('click', () => { const [i, t] = b.dataset.movenew.split('|'); moveOption(Number(i), null, t); }));
   app.querySelectorAll('[data-ndet]').forEach(b => b.addEventListener('click', () => { const i = Number(b.dataset.ndet); if (nightOpen.has(i)) nightOpen.delete(i); else nightOpen.add(i); render(); }));
   app.querySelectorAll('[data-det]').forEach(b => b.addEventListener('click', () => { const i = Number(b.dataset.det); if (openDetails.has(i)) openDetails.delete(i); else openDetails.add(i); render(); }));
+  app.querySelectorAll('[data-fold]').forEach(b => b.addEventListener('click', () => { const pi = Number(b.dataset.fold); if (openParts.has(pi)) { openParts.delete(pi); threadOpen.delete(pi); poll.options.forEach((o, i) => { if (o.part === pi) openDetails.delete(i); }); if (adding && addPart === pi) adding = false; } else openParts.add(pi); render(); document.getElementById(`step-part-${pi}`)?.scrollIntoView({ block: 'nearest' }); }));
   app.querySelectorAll('[data-det-go]').forEach(b => b.addEventListener('click', () => {
     const i = Number(b.dataset.detGo); openDetails.add(i); render();
     document.getElementById(`det-${i}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -490,7 +497,7 @@ function render() {
   }));
   app.querySelectorAll('[data-how]').forEach(b => b.addEventListener('click', () => setHow(b.dataset.how)));
   bindPartTimes();
-  app.querySelectorAll('[data-step]').forEach(b => b.addEventListener('click', () => document.getElementById(`step-${b.dataset.step}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' })));
+  app.querySelectorAll('[data-step]').forEach(b => b.addEventListener('click', () => { const m = /^part-(\d+)$/.exec(b.dataset.step); if (m && !openParts.has(Number(m[1]))) { openParts.add(Number(m[1])); render(); } document.getElementById(`step-${b.dataset.step}`)?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }));
   const openAdd = (d = null) => { addDay = typeof d === 'string' ? d : null; stopOpen = true; adding = true; addPart = 'any'; feed.q = ''; feed.cat = ''; feed.slot = ''; feed.auto = ''; loadNearby(); render(); };
   app.querySelectorAll('[data-planday]').forEach(b => b.addEventListener('click', () => { openAdd(b.dataset.planday); document.getElementById('step-addstop')?.scrollIntoView({ behavior: 'smooth', block: 'start' }); }));
   app.querySelectorAll('[data-bringfrom]').forEach(b => b.addEventListener('click', () => { const [f, t] = b.dataset.bringfrom.split('|'); bringOver(f, t); }));
@@ -1180,6 +1187,25 @@ const notesOpen = () => !(poll.closed && new Date(poll.closes_at).getTime() < Da
 // Each stop's own thread ("Can we do 10:30?"), under its places. Shown when it
 // has comments or its "Comment" button is tapped. Needs comments with a part.
 const threadOpen = new Set(), threadTyped = {};
+// Stops start folded to a line or two (its place, your time, comments);
+// tap one to open its times, places and comments.
+const openParts = new Set();
+function partOpen(pi, idxs) {
+  return openParts.has(pi) || editing || threadOpen.has(pi) || (adding && addPart === pi)
+    || (moveOpen != null && idxs.includes(moveOpen)) || idxs.some(i => openDetails.has(i));
+}
+function foldedHtml(pi, p, idxs, w, fixed, final) {
+  const place = final ? placeName(poll.options[(final.parts || [])[pi]]) : fixed ? placeName(poll.options[idxs[0]])
+    : w >= 0 ? `${placeName(poll.options[w])} leads · ${idxs.length} places` : `${idxs.length} places to vote on`;
+  const mineT = (poll.part_times || []).filter(r => r.part === pi && r.mine).map(r => t12(r.time));
+  const voted = !fixed && !final && (poll.my_votes || []).some(i => idxs.includes(i));
+  const you = final || poll.closed || !('part_times' in poll) ? ''
+    : mineT.length ? `✓ You can make ${mineT.join(', ')}` : `🕒 Can you make ${p.time ? t12(p.time) : 'it'}? Tap to answer`;
+  const pick = !fixed && !final && !poll.closed ? (voted ? '✓ You voted' : '🗳️ Tap to vote') : '';
+  const notes = (poll.comments || []).filter(c => c.part === pi).length;
+  const bits = [you, pick, notes ? `💬 ${notes}` : ''].filter(Boolean);
+  return `<button class="pfoldsum" data-fold="${pi}"><div class="t">${esc(place)}</div>${bits.length ? `<div class="who" style="margin:2px 0 0">${esc(bits.join(' · '))}</div>` : ''}</button>`;
+}
 const threadAbout = {}; // stop -> the option a comment is about (null: the time itself)
 const optName = o => o.own ? o.title : (o.business || o.title);
 function threadHtml(pi, p) {
