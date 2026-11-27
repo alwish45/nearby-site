@@ -403,6 +403,7 @@ function render() {
     ${parted && !final && !poll.closed ? '<h2 class="sec">Help shape it</h2>' : ''}
     ${final ? finalHtml(final) : !invite && !parted ? summaryHtml(sections, partWin, win, lead, mine, people) : ''}
     ${!parted && !invite ? '<div id="step-vote"></div>' : ''}
+    ${poll.rain_day && !final ? `<div class="box" style="background:#eef4fb;border-color:#bcd3ea"><h2>🌧️ Rain check on ${esc(wday(poll.rain_day))}</h2><p class="m" style="margin:0">The plan’s moving to another day.${parted && Array.isArray(poll.times) ? ' Tick the days that work below, or suggest one.' : ''}${isOrg() ? ' Lock it in again once the group has a day.' : ''}</p></div>` : ''}
     ${parted && Array.isArray(poll.times) && !final && !poll.closed && !multiDay() ? dayVoteHtml() : ''}
     ${parted && isOrg() && !final && !poll.closed ? `<button class="edittoggle ${editing ? 'on' : ''}" id="edittoggle" aria-expanded="${editing}"><b>${editing ? '✓ Done changing' : '✏️ Change the stops'}</b><span>${editing ? 'Tap ↔ under a place to move it to another time, or ✕ by a time to take that stop out' : 'Only you: move a place to another time, or take a stop out'}</span></button>` : ''}
     ${sections.map(({ p, pi, idxs }) => {
@@ -463,6 +464,9 @@ function render() {
   document.getElementById('invitemore')?.addEventListener('click', inviteMore);
   document.getElementById('chname')?.addEventListener('click', () => { nameAsk = true; render(); document.getElementById('name')?.focus(); });
   document.getElementById('ics')?.addEventListener('click', downloadIcs);
+  document.getElementById('raincheck')?.addEventListener('click', setRainCheck);
+  document.getElementById('rainplan')?.addEventListener('click', rainCheckPlan);
+  app.querySelectorAll('[data-late]').forEach(b => b.addEventListener('click', () => setLate(Number(b.dataset.late) || null)));
   document.getElementById('textopen')?.addEventListener('click', () => { phoneOpen = true; render(); document.getElementById('phone')?.focus(); });
   document.getElementById('textstop')?.addEventListener('click', () => setTexts(null));
   document.getElementById('textme')?.addEventListener('click', () => { const v = document.getElementById('phone')?.value || ''; if (v.replace(/\D/g, '').length >= 10) setTexts(v); else document.getElementById('phone')?.focus(); });
@@ -1371,15 +1375,15 @@ function dayVoteHtml() {
     const names = (poll.time_voters || []).filter(v => v.time === i).map(v => esc(v.name)).join(', ');
     return `<button class="opt ${mineT.includes(i) ? 'mine' : ''}" data-time="${i}"><span class="bar ${i === best ? 'win' : ''}" style="width:${pct}%"></span>
       <span class="row"><span class="grow"><div class="t">📅 ${esc(long(t.day))}${new Set(times.map(x => String(x.time).slice(0, 5))).size > 1 ? ' · ' + esc(t12(t.time)) : ''}</div>
-      ${t.planned ? '<div class="who">The plan</div>' : ''}${i === best ? `<div class="on">${people >= 2 && n === people ? '✅ Works for everyone' : '⭐ Works for the most people'}</div>` : ''}
+      ${t.day === poll.rain_day ? '<div class="who">🌧️ Rained out</div>' : t.planned ? '<div class="who">The plan</div>' : ''}${i === best ? `<div class="on">${people >= 2 && n === people ? '✅ Works for everyone' : '⭐ Works for the most people'}</div>` : ''}
       ${t.added_by ? `<div class="who">Suggested by ${esc(t.added_by)}</div>` : ''}${names ? `<div class="who">${names}</div>` : ''}
       </span><span class="n">${n}${mineT.includes(i) ? ' ✓' : ''}</span></span></button>${dayPlanHtml(t.day)}`;
-  }).join('') : `<button class="opt" data-dayadd="${plan.day}"><span class="row"><span class="grow"><div class="t">📅 ${esc(long(plan.day))}</div><div class="who">The plan · tap if it works for you</div></span></span></button>`;
+  }).join('') : poll.rain_day === plan.day ? '' : `<button class="opt" data-dayadd="${plan.day}"><span class="row"><span class="grow"><div class="t">📅 ${esc(long(plan.day))}</div><div class="who">The plan · tap if it works for you</div></span></span></button>`;
   const listed = new Set(times.map(t => t.day));
-  const more = dayOpen ? Array.from({ length: 21 }, (_, i) => isoDay(new Date(utahNow().getTime() + i * 864e5))).filter(d => !listed.has(d) && (times.length || d !== plan.day))
+  const more = dayOpen ? Array.from({ length: 21 }, (_, i) => isoDay(new Date(utahNow().getTime() + i * 864e5))).filter(d => !listed.has(d) && (times.length || d !== plan.day || d === poll.rain_day))
     .map(d => `<button class="chip" data-dayadd="${d}">${d === today ? 'Today' : esc(day(d))}</button>`).join('') : '';
   return `<div class="box" id="step-day"><h2>📅 Which day?</h2>
-    <p class="m" style="margin:0 0 10px">${times.length ? 'Tap every day that works for you.' : 'Does this day work? Tap it, or suggest another day.'}</p>${rows}
+    <p class="m" style="margin:0 0 10px">${times.length ? 'Tap every day that works for you.' : poll.rain_day === plan.day ? 'Suggest a day that works.' : 'Does this day work? Tap it, or suggest another day.'}</p>${rows}
     ${poll.can_add_time ? `<button class="suggest" id="daymore" style="margin:0">${dayOpen ? 'Cancel' : '＋ Suggest another day'}</button>${more ? `<div class="chips" style="padding-top:8px">${more}</div>` : ''}` : '<div class="who">This plan already has 6 days to pick from.</div>'}</div>`;
 }
 
@@ -1792,11 +1796,51 @@ async function setRsvp(st) {
 }
 function rsvpHtml(final, fullyClosed) {
   const r = poll.rsvp || { in: [], maybe: [], out: [] };
-  const counts = r.in.length + r.maybe.length + r.out.length ? [`${r.in.length} in`, r.maybe.length ? `${r.maybe.length} maybe` : '', r.out.length ? `${r.out.length} can’t` : ''].filter(Boolean).join(' · ') : 'No one’s answered yet';
+  // Rain checks count as "can't" in the database; shown on their own here.
+  const rains = poll.rain_checks || [], left = [...rains];
+  const cant = r.out.filter(n => { const k = left.indexOf(n); if (k < 0) return true; left.splice(k, 1); return false; });
+  const mineR = poll.my_rain_check ? null : poll.my_rsvp;
+  const counts = r.in.length + r.maybe.length + r.out.length ? [`${r.in.length} in`, r.maybe.length ? `${r.maybe.length} maybe` : '', cant.length ? `${cant.length} can’t` : '', rains.length ? `${rains.length} rain check${rains.length === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ') : 'No one’s answered yet';
   return `<div class="down" id="step-in"><h2>${final ? 'It’s set. Are you in?' : 'Are you in?'}</h2>
     <div class="m">${esc(counts)}</div>
-    ${r.in.length ? `<div class="who">🙌 ${esc(r.in.join(', '))}</div>` : ''}${r.maybe.length ? `<div class="who">🤔 ${esc(r.maybe.join(', '))}</div>` : ''}${r.out.length ? `<div class="who">😕 ${esc(r.out.join(', '))}</div>` : ''}
-    <div class="rsvp">${[['in', '🙌 I’m in'], ['maybe', '🤔 Maybe'], ['out', '😕 Can’t']].map(([k, l]) => `<button data-rsvp="${k}" class="${poll.my_rsvp === k ? 'on' : ''}" aria-pressed="${poll.my_rsvp === k}" ${fullyClosed ? 'disabled' : ''}>${l}</button>`).join('')}</div></div>`;
+    ${r.in.length ? `<div class="who">🙌 ${esc(r.in.join(', '))}</div>` : ''}${r.maybe.length ? `<div class="who">🤔 ${esc(r.maybe.join(', '))}</div>` : ''}${cant.length ? `<div class="who">😕 ${esc(cant.join(', '))}</div>` : ''}${rains.length ? `<div class="who">🌧️ Rain check: ${esc(rains.join(', '))}</div>` : ''}
+    <div class="rsvp">${[['in', '🙌 I’m in'], ['maybe', '🤔 Maybe'], ['out', '😕 Can’t']].map(([k, l]) => `<button data-rsvp="${k}" class="${mineR === k ? 'on' : ''}" aria-pressed="${mineR === k}" ${fullyClosed ? 'disabled' : ''}>${l}</button>`).join('')}</div>
+    ${'rain_checks' in poll ? `<div class="rsvp"><button id="raincheck" class="${poll.my_rain_check ? 'on' : ''}" aria-pressed="${!!poll.my_rain_check}" ${fullyClosed ? 'disabled' : ''}>${poll.my_rain_check ? '🌧️ Rain check taken (tap to undo)' : '🌧️ Rain check · up for another day'}</button></div>` : ''}</div>`;
+}
+async function setRainCheck() {
+  if (!(await askNameFirst())) return;
+  return once(async () => {
+    const on = !poll.my_rain_check;
+    try { poll = await rpc('set_rain_check', { p_code: code, p_voter_key: me, p_on: on, p_name: myName() }); render();
+      if (on) toast(poll.final ? 'Rain check taken · the organizers know' : 'Rain check taken · suggest a day that works'); }
+    catch (e) { alert(/closed/.test(e.message) ? 'This plan has closed.' : "Couldn't save that. Try again."); }
+  });
+}
+async function setLate(m) {
+  if (!(await askNameFirst())) return;
+  return once(async () => {
+    try { poll = await rpc('set_late', { p_code: code, p_voter_key: me, p_minutes: m, p_name: myName() }); render(); toast(m ? 'Everyone’s been told' : 'Got it · you’re on time'); }
+    catch { alert("Couldn't save that. Try again."); }
+  });
+}
+async function rainCheckPlan() {
+  const d = (poll.final && poll.final.day) || poll.plan_day;
+  if (!isOrg() || !confirm(`Take a rain check? The plan moves to another day: it comes unlocked, ${d ? wday(d) + '’s' : 'the day’s'} votes are cleared and everyone is asked which days work. The stops and their votes stay.`)) return;
+  await once(async () => { try { poll = await rpc('rain_check_poll', { p_code: code, p_creator_key: me }); render(); toast('Rain check · everyone’s asked to pick a new day'); }
+    catch { alert("Couldn't do that. Try again."); } });
+}
+// "Running late?" on the day of a set plan (any of its days), and while someone's late.
+const LATE_MINS = [5, 10, 15, 30, 60];
+const lateWord = m => (m >= 60 ? 'an hour+' : `${m} min`);
+function lateHtml(f) {
+  if (!('late' in poll)) return '';
+  const today = isoDay(utahNow()), late = poll.late || [], mineL = late.find(l => l.mine);
+  const days = Array.isArray(f.parts) && (poll.parts || []).length ? poll.parts.map(partDay) : [f.day || poll.plan_day || today];
+  if (!days.includes(today) && !late.length) return '';
+  const at = t => new Date(t).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'America/Denver' }).toLowerCase().replace(' ', '');
+  return `<div style="margin-top:10px">${late.map(l => `<div class="who" style="color:#9a3412">⏰ ${l.mine ? 'You’re' : esc(l.name) + '’s'} running ${lateWord(l.minutes)} late${l.at ? ' · said ' + at(l.at) : ''}</div>`).join('')}
+    <div class="who">${mineL ? 'Update it, or tap On time:' : 'Running late? Let everyone know:'}</div>
+    <div class="chips" style="padding-top:4px">${LATE_MINS.map(m => `<button class="chip ${mineL && mineL.minutes === m ? 'on' : ''}" data-late="${m}">⏰ ${lateWord(m)}</button>`).join('')}${mineL ? '<button class="chip" data-late="0">✓ On time</button>' : ''}</div></div>`;
 }
 const placeName = o => (o && (o.own ? o.title : o.business || o.title)) || '';
 // "Brunch: Zest", and "Coffee at Publik Coffee" when your own stop is named like the stop.
@@ -2023,8 +2067,8 @@ function finalHtml(f) {
   return `<div class="final"><h2>✅ It’s set${when ? ' · ' + esc(when) : ''}</h2>${multiDay() ? [...new Set(poll.parts.map(partDay))].sort().filter(d => d >= isoDay(utahNow())).map(d => weatherHtml(d, false, wday(d))).join('') : fday && fday >= isoDay(utahNow()) ? weatherHtml(fday) : ''}${stops}
     ${(() => { const days = multiDay() ? [...new Set(poll.parts.map(partDay))].sort() : [null];
       return days.map(d => { const l = planCalLinks(d); return l ? `${d ? `<div class="who" style="margin-top:10px">${esc(day(d))}</div>` : ''}<div class="calrow"${d ? ' style="margin-top:4px"' : ''}><a class="calbtn" href="${esc(l.google)}" target="_blank" rel="noopener">📅 Google Calendar</a><a class="calbtn" href="${esc(l.outlook)}" target="_blank" rel="noopener">📅 Outlook</a></div>` : ''; }).join(''); })()}
-    <button class="downbtn" id="ics" style="margin-top:10px">📅 Apple / other calendar</button>
-    ${isOrg() && !poll.closed ? '<button class="linkbtn" id="unlockbtn" style="display:block;margin:12px auto 0">🔓 Unlock to change the plan</button>' : ''}</div>`;
+    <button class="downbtn" id="ics" style="margin-top:10px">📅 Apple / other calendar</button>${lateHtml(f)}
+    ${isOrg() && !poll.closed ? `<button class="linkbtn" id="unlockbtn" style="display:block;margin:12px auto 0">🔓 Unlock to change the plan</button>${'rain_day' in poll && (fday || isoDay(utahNow())) >= isoDay(utahNow()) ? '<button class="linkbtn" id="rainplan" style="display:block;margin:8px auto 0">🌧️ Rain check: move it to another day</button>' : ''}` : ''}</div>`;
 }
 // Google / Outlook links for the set plan: one entry from the first stop to two
 // hours after the last, every stop in the notes (Utah time; Outlook takes the

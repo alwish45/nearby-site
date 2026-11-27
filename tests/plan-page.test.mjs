@@ -1002,3 +1002,73 @@ describe('escaping', () => {
     });
   });
 });
+
+describe('rain checks and running late', () => {
+  const rainy = (over = {}) => dinnerDrinks({ rsvp: { in: ['Ann'], maybe: [], out: ['Bo', 'Sam'] }, rain_checks: ['Sam'], my_rain_check: false, late: [], rain_day: null, ...over });
+
+  test('a friend’s rain check is shown apart from “can’t”, and the button calls set_rain_check', async () => {
+    const rpc = { set_rain_check: (b, s) => { s.poll.my_rain_check = b.p_on; s.poll.rain_checks = b.p_on ? ['Sam', 'Kai'] : ['Sam']; s.poll.rsvp.out = b.p_on ? ['Bo', 'Sam', 'Kai'] : ['Bo', 'Sam']; s.poll.my_rsvp = b.p_on ? 'out' : null; return s.poll; } };
+    await withPlan(rainy(), { name: 'Kai', rpc }, async t => {
+      const box = await t.text('#step-in');
+      assert.match(box, /1 in · 1 can’t · 1 rain check/);
+      assert.match(box, /😕 Bo\n/); assert.match(box, /🌧️ Rain check: Sam/);
+      await t.page.click('#raincheck');
+      assert.deepEqual(await t.waitCall('set_rain_check'), { p_code: CODE, p_voter_key: VOTER, p_on: true, p_name: 'Kai' });
+      await t.page.waitForSelector('#raincheck.on');
+      assert.equal(await count(t, '[data-rsvp="out"].on'), 0, '“Can’t” isn’t marked too');
+      assert.match(await t.text('#step-in'), /2 rain checks/);
+      await t.page.click('#raincheck');
+      assert.equal((await t.waitCall('set_rain_check', 2)).p_on, false);
+    });
+  });
+
+  test('no rain check button against an older database', async () => {
+    await withPlan(dinnerDrinks(), { name: 'Kai' }, async t => assert.equal(await count(t, '#raincheck'), 0));
+  });
+
+  test('running late: shown on the plan’s day, calls set_late, and On time clears it', async () => {
+    const rpc = { set_late: (b, s) => { s.poll.late = b.p_minutes ? [{ name: 'Kai', minutes: b.p_minutes, at: NOW, mine: true }] : []; return s.poll; } };
+    await withPlan(rainy({ final: { parts: [0, 2], day: TODAY }, plan_day: TODAY, late: [{ name: 'Ann', minutes: 10, at: NOW, mine: false }] }), { name: 'Kai', rpc }, async t => {
+      assert.match(await t.text('.final'), /⏰ Ann’s running 10 min late · said 12:00pm/);
+      await t.page.click('[data-late="15"]');
+      assert.deepEqual(await t.waitCall('set_late'), { p_code: CODE, p_voter_key: VOTER, p_minutes: 15, p_name: 'Kai' });
+      await t.page.waitForSelector('[data-late="0"]');
+      assert.match(await t.text('.final'), /You’re running 15 min late/);
+      await t.page.click('[data-late="0"]');
+      assert.equal((await t.waitCall('set_late', 2)).p_minutes, null);
+    });
+  });
+
+  test('running late isn’t offered before the plan’s day', async () => {
+    await withPlan(rainy({ final: { parts: [0, 2], day: FRI } }), { name: 'Kai' }, async t => assert.equal(await count(t, '[data-late]'), 0));
+  });
+
+  test('an organizer’s rain check on the plan asks first, then calls rain_check_poll', async () => {
+    const rpc = { rain_check_poll: (b, s) => { s.poll.final = null; s.poll.rain_day = FRI; return s.poll; } };
+    await withPlan(rainy({ final: { parts: [0, 2], day: FRI }, is_creator: true, is_organizer: true, times: [] }), { name: 'Kai', rpc }, async t => {
+      await t.page.click('#rainplan');
+      assert.match(await t.waitDialog(), /Take a rain check\? .*Fri’s votes are cleared/);
+      assert.deepEqual(await t.waitCall('rain_check_poll'), { p_code: CODE, p_creator_key: VOTER });
+      await t.page.waitForFunction(() => /Rain check on Fri/.test(document.body.textContent));
+      const day = await t.text('#step-day');
+      assert.match(day, /Suggest a day that works/);
+      assert.doesNotMatch(day, /The plan · tap if it works/, 'the rained-out day isn’t offered as the plan');
+    });
+  });
+
+  test('cancelling the plan rain check changes nothing', async () => {
+    await withPlan(rainy({ final: { parts: [0, 2], day: FRI }, is_creator: true, is_organizer: true }), { name: 'Kai', onDialog: d => d.dismiss() }, async t => {
+      await t.page.click('#rainplan');
+      await t.waitDialog();
+      await t.page.waitForTimeout(150);
+      assert.equal(t.calls('rain_check_poll').length, 0);
+    });
+  });
+
+  test('friends don’t get the plan rain check; the rained-out day is marked in Which day?', async () => {
+    await withPlan(rainy({ final: { parts: [0, 2], day: FRI } }), { name: 'Kai' }, async t => assert.equal(await count(t, '#rainplan'), 0));
+    await withPlan(rainy({ rain_day: FRI, times: [{ day: FRI, time: '17:30', planned: true }, { day: SAT, time: '17:30' }], time_counts: [0, 1], time_people: 1 }), { name: 'Kai' }, async t => {
+      assert.match(await t.text('#step-day'), /Friday[^]*🌧️ Rained out/);
+    });
+  });
+});
