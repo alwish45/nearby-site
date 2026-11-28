@@ -88,3 +88,14 @@ test('a cancelled event shows it and has no RSVP; a missing one says not found',
   assert.match(await t.page.locator('#app').innerText(), /Event not found/);
   await t.close();
 });
+
+test('the Add and Post buttons keep their word on one line on a phone', async () => {
+  const t = await openEvent(makeEvent());
+  await t.page.setViewportSize({ width: 375, height: 800 });
+  for (const label of ['Add', 'Post']) {
+    const box = await t.page.locator('.row .btn', { hasText: label }).evaluate(b => ({ h: b.getBoundingClientRect().height, w: b.getBoundingClientRect().width, sw: b.scrollWidth }));
+    assert.ok(box.h <= 48, `${label} is ${box.h}px tall (wrapped)`);
+    assert.ok(box.sw <= box.w + 1, `${label} text overflows`);
+  }
+  await t.close();
+});
