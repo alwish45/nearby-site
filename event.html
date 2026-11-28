@@ -55,6 +55,9 @@
   .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
   .cta { display:block; text-align:center; background:var(--fill); color:#fff; text-decoration:none; font-weight:800; padding:14px; border-radius:14px; margin-top:24px; }
   .err { color:#b91c1c; font-weight:700; margin-top:8px; }
+  .bringitem { display:flex; align-items:center; gap:8px; }
+  .bringitem span { flex:1; }
+  .x { width:40px; height:40px; border:0; border-radius:20px; background:transparent; color:var(--muted); font-size:16px; font-weight:700; flex-shrink:0; }
 </style>
 </head>
 <body>
@@ -81,7 +84,20 @@ const me = voterKey();
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const t12 = t => { if (!t) return ''; const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}${m ? ':' + String(m).padStart(2, '0') : ''}${h < 12 ? 'am' : 'pm'}`; };
 const mins = t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + (m || 0); };
-const longDay = d => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+// Utah wall-clock time, wherever the guest is (as vote.html does).
+const utahNow = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Denver' }));
+// Start times run 5am to 2am that night: a 12:30am start on a Saturday event is
+// Saturday night, so Sunday 12:30am on a calendar (the app's eventStartDay).
+const isNight = t => !!t && mins(t) < 5 * 60;
+const nextIso = d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + 1); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+const startDay = e => (isNight(e.start) ? nextIso(e.date) : e.date);
+// "Saturday, Nov 28 · 7pm–1am (next day)", or "Saturday night, Nov 28 · 12:30am" for a 12–2am start.
+function whenText(e) {
+  const d = new Date(e.date + 'T12:00:00');
+  const wk = d.toLocaleDateString('en-US', { weekday: 'long' }), md = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const late = e.end && mins(e.end) < mins(e.start) ? ' (next day)' : '';
+  return `${isNight(e.start) ? `${wk} night` : wk}, ${md} · ${t12(e.start)}${e.end ? '–' + t12(e.end) + late : ''}`;
+}
 const KINDS = { party: '🎉', birthday: '🎂', game_night: '🎲', dinner: '🍽️', shower: '🍼', graduation: '🎓', holiday: '🎄', meetup: '👋', book_club: '📚', other: '✨' };
 const COVERS = { confetti: ['#FFE2CC', '#E8542A', '#14110D'], sunset: ['#FFD6A5', '#C2410C', '#14110D'], night: ['#1F2A44', '#7C8CF8', '#FAF8F4'], garden: ['#DFF3E4', '#1E7A46', '#14110D'],
   gold: ['#F7E7B4', '#A16207', '#14110D'], ocean: ['#D6ECFA', '#1D6FA5', '#14110D'], rose: ['#FBE0E6', '#BE185D', '#14110D'], mint: ['#DDF7F1', '#0F766E', '#14110D'] };
@@ -96,6 +112,8 @@ function bookHtml(e) {
     ${bookLine(b) ? `<p class="small">${esc(bookLine(b))}</p>` : ''}
     ${e.reading ? `<p style="margin:8px 0 0"><b>📖 Read by then:</b> ${esc(e.reading)}</p>` : ''}</div></div>`;
 }
+// Links people typed (a photo album): http(s) only, else no link.
+const safeLink = u => { const v = String(u || '').trim(); return /^https?:\/\//i.test(v) ? v : /^[a-z][a-z0-9+.-]*:/i.test(v) || !v ? '' : `https://${v}`; };
 const LINK = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|co|ly|me|app|link|xyz)\b)/i;
 let myName = (() => { try { return localStorage.getItem('nearby.name') || ''; } catch { return ''; } })();
 const saveName = n => { myName = n; try { localStorage.setItem('nearby.name', n); } catch {} };
@@ -107,17 +125,20 @@ async function rpc(fn, body) {
   return j;
 }
 
-let ev = null, loadFailed = false, bring = [], guests = 0, answer = '', saving = false, error = '';
+let ev = null, loadFailed = false, bring = [], guests = 0, answer = '', saving = false, error = '', bringErr = '', noteErr = '';
 const typing = () => ['name', 'answer', 'bring', 'note'].includes(document.activeElement && document.activeElement.id);
 
+// Over: after it ends (or 6 hours after it starts with no end), in Utah time.
 function over(e) {
-  const start = new Date(e.date + 'T12:00:00'); const [h, m] = e.start.split(':').map(Number); start.setHours(h, m, 0, 0);
+  if (!e.date || !e.start) return false;
+  const start = new Date(startDay(e) + 'T12:00:00'); const [h, m] = e.start.split(':').map(Number); start.setHours(h, m, 0, 0);
   let end = new Date(start.getTime() + 6 * 3600e3);
   if (e.end) { end = new Date(start); const [eh, em] = e.end.split(':').map(Number); end.setHours(eh, em, 0, 0); if (end <= start) end.setDate(end.getDate() + 1); }
-  return Date.now() > end.getTime();
+  return utahNow() > end;
 }
+// Google Calendar: the real start (12:30am is the next calendar day), to the end time when there is one.
 function calLink(e) {
-  const pad = n => String(n).padStart(2, '0'), [y, mo, d] = e.date.split('-').map(Number), [h, mi] = e.start.split(':').map(Number);
+  const pad = n => String(n).padStart(2, '0'), [y, mo, d] = startDay(e).split('-').map(Number), [h, mi] = e.start.split(':').map(Number);
   const s = new Date(Date.UTC(y, mo - 1, d, h, mi)), en = new Date(s.getTime() + (e.end ? (((mins(e.end) - mins(e.start)) + 1440) % 1440 || 180) : 180) * 60000);
   const f = t => `${t.getUTCFullYear()}${pad(t.getUTCMonth() + 1)}${pad(t.getUTCDate())}T${pad(t.getUTCHours())}${pad(t.getUTCMinutes())}00`;
   const where = (e.place && (e.place.address || e.place.business || e.place.title)) || '';
@@ -133,7 +154,8 @@ function render() {
   }
   const e = ev.event || {}, c = COVERS[e.cover] || COVERS.confetti, done = over(e), host = !!ev.is_organizer, h = ev.heads || {};
   const notDenver = Intl.DateTimeFormat().resolvedOptions().timeZone !== 'America/Denver';
-  const late = e.end && mins(e.end) < mins(e.start) ? ' (next day)' : '';
+  const album = safeLink(e.album);
+  const phone = /iPhone|iPad|Android/i.test(navigator.userAgent);
   const place = e.place || {};
   const list = Array.isArray(ev.guests) ? ev.guests.filter(g => g.status !== 'out' || host) : null;
   document.title = `${ev.title || 'An event'} · near.by`;
@@ -141,7 +163,7 @@ function render() {
     ${!host ? '<p class="what">You’re invited to an event on near.by. See the details and say if you can make it.</p>' : ''}
     <div class="cover" style="background:${c[0]};color:${c[2]}"><div class="band" style="background:${c[1]}"></div>
       <div class="icon">${KINDS[e.kind] || '🎉'}</div><h1>${esc(ev.title)}</h1>
-      <div class="when">${esc(longDay(e.date))} · ${esc(t12(e.start))}${e.end ? '–' + esc(t12(e.end)) + late : ''}</div>
+      <div class="when">${esc(whenText(e))}</div>
       ${notDenver ? '<div class="small" style="color:inherit">🕐 Utah time (MT)</div>' : ''}</div>
     ${ev.cancelled ? '<p class="banner">🚫 This event was cancelled.</p>' : ''}
     ${e.updated_at && !ev.cancelled ? `<p class="small">Updated ${esc(new Date(e.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</p>` : ''}
@@ -153,6 +175,7 @@ function render() {
     <div class="actions">
       ${!ev.cancelled ? `<a class="ghost" href="${esc(calLink(e))}" target="_blank" rel="noopener">🗓️ Add to calendar</a>` : ''}
       ${(place.address || place.business) && !e.address_hidden ? `<a class="ghost" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.address || place.business)}" target="_blank" rel="noopener">🧭 Directions</a>` : ''}
+      ${phone ? `<a class="ghost" id="openapp" href="nearby://event/${esc(code)}">📱 Open in the near.by app</a>` : ''}
     </div>
     ${!ev.cancelled && !done ? `<div class="card" id="step-rsvp"><h2>Are you going?</h2>
       <label for="name">Your name</label><input type="text" id="name" maxlength="30" value="${esc(myName)}" placeholder="Your name">
@@ -168,12 +191,15 @@ function render() {
     ${e.kind === 'book_club' && Array.isArray(e.questions) && e.questions.length ? `<div class="card" id="step-questions"><h2>💬 To talk about</h2>
       <ol class="qs">${e.questions.map(q => `<li>${esc(q)}</li>`).join('')}</ol></div>` : ''}
     ${e.potluck ? `<div class="card" id="step-bring"><h2>${e.kind === 'book_club' ? '🍪 Who’s bringing snacks' : '🥘 Who’s bringing what'}</h2>
-      ${bring.map(b => `<div class="guest">${esc(b.mine ? 'You' : b.name)} · ${esc(b.item)}</div>`).join('') || '<p class="small">Nothing yet.</p>'}
-      ${!ev.cancelled && !done ? `<div class="row" style="margin-top:10px"><input type="text" id="bring" maxlength="60" placeholder="I’m bringing…"><button class="btn" onclick="addBring()">Add</button></div>` : ''}</div>` : ''}
-    ${done && !ev.cancelled ? `<div class="card"><h2>How was it? 📸</h2>${e.album ? `<a class="ghost" href="${esc(e.album)}" target="_blank" rel="noopener">Open the photo album</a>` : '<p class="small">The host can add a shared photo album.</p>'}</div>` : ''}
+      ${bring.map(b => `<div class="guest bringitem"><span>${esc(b.mine ? 'You' : b.name)} · ${esc(b.item)}</span>${b.mine || host ? `<button class="x" aria-label="Take ${esc(b.item)} off the list" onclick="removeBring(${Number(b.id)})">✕</button>` : ''}</div>`).join('')
+        || `<p class="small">${!ev.cancelled && !done ? 'Nothing yet. Add what you’re bringing.' : 'Nothing yet.'}</p>`}
+      ${!ev.cancelled && !done ? `<div class="row" style="margin-top:10px"><input type="text" id="bring" maxlength="60" placeholder="I’m bringing…"><button class="btn" onclick="addBring()">Add</button></div>` : ''}
+      ${bringErr ? `<p class="err">${esc(bringErr)}</p>` : ''}</div>` : ''}
+    ${done && !ev.cancelled ? `<div class="card"><h2>How was it? 📸</h2>${album ? `<a class="ghost" href="${esc(album)}" target="_blank" rel="noopener">Open the photo album</a>` : '<p class="small">The host can add a shared photo album.</p>'}</div>` : ''}
     <div class="card" id="step-notes"><h2>Notes</h2>
       ${(ev.comments || []).slice(-20).map(n => `<div class="guest"><b>${esc(n.name)}</b> ${esc(n.body)}</div>`).join('') || '<p class="small">No notes yet.</p>'}
-      ${!ev.cancelled ? `<div class="row" style="margin-top:10px"><input type="text" id="note" maxlength="300" placeholder="Say something to everyone"><button class="btn" onclick="addNote()">Post</button></div>` : ''}</div>
+      ${!ev.cancelled ? `<div class="row" style="margin-top:10px"><input type="text" id="note" maxlength="300" placeholder="Say something to everyone"><button class="btn" onclick="addNote()">Post</button></div>` : ''}
+      ${noteErr ? `<p class="err">${esc(noteErr)}</p>` : ''}</div>
     ${host ? '<p class="small">You’re a host. Open near.by on your phone to edit the event, message guests or cancel it.</p>' : ''}`;
 }
 
@@ -186,6 +212,7 @@ async function answerRsvp(status) {
   if (!n.trim()) { error = 'Add your name so the host knows who’s coming.'; render(); return; }
   if (LINK.test(a)) { error = 'Leave links out of your answer.'; render(); return; }
   saving = true; answer = a;
+  guests = Math.min(Math.max(guests, 0), Number((ev.event || {}).plus_ones) || 0); // never more +1s than the event allows
   try { saveName(n.trim()); ev = await rpc('rsvp_event', { p_code: code, p_voter_key: me, p_status: status, p_name: n.trim(), p_guests: status === 'in' ? guests : 0, p_answer: a.trim() || null }); }
   catch (e) { error = /full|extra guest|cancelled|links/i.test(e.message) ? e.message.charAt(0).toUpperCase() + e.message.slice(1) + '.' : 'Couldn’t save that. Try again.'; }
   finally { saving = false; render(); }
@@ -193,15 +220,23 @@ async function answerRsvp(status) {
 async function addBring() {
   const it = ((document.getElementById('bring') || {}).value || '').trim();
   if (!it || saving) return;
-  saving = true;
-  try { bring = await rpc('add_poll_bring', { p_code: code, p_voter_key: me, p_name: myName || null, p_item: it }) || bring; } catch { error = 'Couldn’t add that. Try again.'; }
+  saving = true; bringErr = '';
+  try { bring = await rpc('add_poll_bring', { p_code: code, p_voter_key: me, p_name: myName || null, p_item: it }) || bring; }
+  catch (e) { bringErr = /full/.test(e.message) ? 'The list is full.' : /too many/.test(e.message) ? 'That’s a lot at once. Try again in a few minutes.' : 'Couldn’t add that. Try again.'; }
+  finally { saving = false; render(); }
+}
+// Take an item off: your own, or any item for a host (as on a plan's list).
+async function removeBring(id) {
+  if (saving) return;
+  saving = true; bringErr = '';
+  try { bring = await rpc('remove_poll_bring', { p_code: code, p_voter_key: me, p_id: id }) || []; } catch { bringErr = 'Couldn’t take that off. Try again.'; }
   finally { saving = false; render(); }
 }
 async function addNote() {
   const b = ((document.getElementById('note') || {}).value || '').trim();
   if (!b || saving) return;
-  saving = true;
-  try { await rpc('add_poll_comment', { p_code: code, p_voter_key: me, p_name: myName || null, p_body: b }); await load(true); } catch { error = 'Couldn’t post that. Try again.'; }
+  saving = true; noteErr = '';
+  try { await rpc('add_poll_comment', { p_code: code, p_voter_key: me, p_name: myName || null, p_body: b }); await load(true); } catch { noteErr = 'Couldn’t post that. Try again.'; }
   finally { saving = false; render(); }
 }
 

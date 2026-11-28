@@ -52,6 +52,9 @@ const KEY = 'sb_publishable_nxsW5dUJNZJJf-gjGzfHLg_hxUXa9RU';
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 const id = (new URLSearchParams(location.search).get('d') || '').toLowerCase().replace(/[^0-9a-f-]/g, '');
 const app = document.getElementById('app');
+// A business's website or menu: http(s) only (a bare "example.com" gets https://),
+// anything else (javascript:, data:…) no link at all.
+const safeLink = u => { const v = String(u || '').trim(); return /^https?:\/\//i.test(v) ? v : /^[a-z][a-z0-9+.-]*:/i.test(v) || !v ? '' : `https://${v}`; };
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // "4pm", "8:30pm" from "16:00:00".
@@ -85,6 +88,7 @@ async function load() {
   } catch { /* shown below */ }
   if (!d) { app.innerHTML = '<h1>We couldn’t find that deal.</h1><p class="sub">It may have ended. There’s plenty more on near.by.</p>'; return; }
   const b = d.businesses || {};
+  const menu = safeLink(b.menu_url), site = safeLink(b.website);
   const over = !d.is_active || (d.valid_until && d.valid_until < new Date().toISOString().slice(0, 10));
   const where = [b.address, b.city].filter(Boolean).join(', ');
   const maps = where ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${b.name || ''} ${where}`)}` : null;
@@ -100,8 +104,8 @@ async function load() {
     <div class="actions">
       ${maps ? `<a class="ghost" href="${maps}" target="_blank" rel="noopener">📍 Directions</a>` : ''}
       ${b.phone ? `<a class="ghost" href="tel:${esc(b.phone.replace(/[^0-9+]/g, ''))}">📞 Call</a>` : ''}
-      ${b.menu_url ? `<a class="ghost" href="${esc(b.menu_url)}" target="_blank" rel="noopener">🍽️ Menu</a>` : ''}
-      ${b.website ? `<a class="ghost" href="${esc(b.website)}" target="_blank" rel="noopener">🌐 Website</a>` : ''}
+      ${menu ? `<a class="ghost" href="${esc(menu)}" target="_blank" rel="noopener">🍽️ Menu</a>` : ''}
+      ${site ? `<a class="ghost" href="${esc(site)}" target="_blank" rel="noopener">🌐 Website</a>` : ''}
     </div>`;
   if (/iPhone|iPad|Android/i.test(navigator.userAgent)) {
     const o = document.getElementById('openapp');

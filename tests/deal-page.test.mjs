@@ -35,8 +35,9 @@ async function open(rows, { id = ID, ua = 'Mozilla/5.0 (Linux; Android 14; Pixel
   await page.waitForFunction(() => !/Loading/.test(document.querySelector('#app').textContent));
   const text = await page.locator('main').innerText();
   const openVisible = await page.locator('#openapp').isVisible();
+  const links = await page.$$eval('#app a', as => as.map(a => [a.textContent.trim(), a.getAttribute('href')]));
   await context.close();
-  return { text, errors, openVisible };
+  return { text, errors, openVisible, links };
 }
 
 test('shows the deal, the place, when it is on, and an Open in app button on a phone', async () => {
@@ -73,4 +74,14 @@ test('text from the database is shown as text, not HTML', async () => {
   const { text, errors } = await open([deal({ title: '<img src=x onerror="window.x=1">Wings' })]);
   assert.deepEqual(errors, []);
   assert.match(text, /<img src=x/);
+});
+
+test('website and menu links are http(s) only', async () => {
+  const biz = over => deal({ businesses: { ...deal().businesses, ...over } });
+  let r = await open([biz({ website: 'javascript:alert(1)', menu_url: 'data:text/html,<b>x</b>' })]);
+  assert.ok(!r.links.some(([, h]) => /^(javascript|data):/i.test(h || '')), JSON.stringify(r.links));
+  assert.ok(!/Website|Menu/.test(r.text));
+  r = await open([biz({ website: 'quarters.bar', menu_url: 'http://quarters.bar/menu' })]);
+  assert.deepEqual(r.links.filter(([t]) => /Website|Menu/.test(t)).map(([, h]) => h), ['http://quarters.bar/menu', 'https://quarters.bar']);
+  assert.deepEqual(r.errors, []);
 });

@@ -19,14 +19,15 @@ function makeEvent(over = {}) {
   };
 }
 
-async function openEvent(ev, rpc = {}) {
+// opts: timezoneId (where the guest is), userAgent (a phone), now (the fixed clock).
+async function openEvent(ev, rpc = {}, opts = {}) {
   const b = await getBrowser();
-  const context = await b.newContext({ timezoneId: 'America/Denver', viewport: { width: 390, height: 900 } });
+  const context = await b.newContext({ timezoneId: opts.timezoneId || 'America/Denver', viewport: { width: 390, height: 900 }, ...(opts.userAgent ? { userAgent: opts.userAgent } : {}) });
   const page = await context.newPage();
   const state = { ev, calls: [], errors: [] };
   page.on('pageerror', e => state.errors.push(String(e)));
   await context.addInitScript(k => { try { localStorage.setItem('nearby.voter', k); } catch {} }, VOTER);
-  await page.clock.setFixedTime(new Date('2026-11-26T12:00:00-07:00'));
+  await page.clock.setFixedTime(new Date(opts.now || '2026-11-26T12:00:00-07:00'));
   await context.route('**/*', async route => {
     const req = route.request(), u = new URL(req.url());
     if (u.protocol === 'file:') return route.continue();
@@ -115,5 +116,110 @@ test('a book club shows the book, what to read, the questions and the snacks lis
   // The cover comes from Open Library (outside requests are blocked in tests, so the image itself drops out).
   assert.equal(await t.page.evaluate(() => coverUrl(10520611, 'L')), 'https://covers.openlibrary.org/b/id/10520611-L.jpg');
   assert.equal(await t.page.locator('.cover .icon').innerText(), '📚');
+  await t.close();
+});
+
+// A 12–2am start is that night's: Thursday 12:30am on a Thursday event is early Friday.
+const lateEvent = (date, over = {}) => makeEvent({ event: { ...makeEvent().event, date, start: '00:30', end: '02:00', ...over } });
+
+test('a 12:30am start reads as that night and goes on the next calendar day', async () => {
+  const t = await openEvent(lateEvent('2026-11-28'));
+  assert.match(await t.page.locator('.when').innerText(), /^Saturday night, Nov 28 · 12:30am–2am$/);
+  const href = await t.page.locator('a', { hasText: 'Add to calendar' }).getAttribute('href');
+  assert.match(href, /dates=20261129T003000\/20261129T020000&ctz=America\/Denver/);
+  await t.close();
+});
+
+test('calendar runs to the end time, past midnight too', async () => {
+  const t = await openEvent(makeEvent()); // Sat 7pm–1am
+  const href = await t.page.locator('a', { hasText: 'Add to calendar' }).getAttribute('href');
+  assert.match(href, /dates=20261128T190000\/20261129T010000/);
+  await t.close();
+});
+
+test('a late start isn’t over until it has happened', async () => {
+  // Thursday noon: a "Thursday 12:30am" event is tonight (Friday 12:30am), so the RSVP is still open.
+  let t = await openEvent(lateEvent('2026-11-26'));
+  assert.equal(await t.page.locator('#step-rsvp').count(), 1);
+  await t.close();
+  // Wednesday's ran this morning (Thursday 12:30–2am): over.
+  t = await openEvent(lateEvent('2026-11-25'));
+  assert.equal(await t.page.locator('#step-rsvp').count(), 0);
+  assert.match(await t.page.locator('#app').innerText(), /How was it\?/);
+  await t.close();
+});
+
+test('over goes by Utah time wherever the guest is', async () => {
+  // 7pm–10pm Thursday in Utah; it's 11pm in Utah (Friday afternoon in Tokyo), so it's over.
+  const ev = makeEvent({ event: { ...makeEvent().event, date: '2026-11-26', start: '19:00', end: '22:00' } });
+  let t = await openEvent(ev, {}, { timezoneId: 'Asia/Tokyo', now: '2026-11-26T23:00:00-07:00' });
+  assert.equal(await t.page.locator('#step-rsvp').count(), 0);
+  await t.close();
+  // 6pm in Utah (Friday 10am in Tokyo): not yet.
+  t = await openEvent(ev, {}, { timezoneId: 'Asia/Tokyo', now: '2026-11-26T18:00:00-07:00' });
+  assert.equal(await t.page.locator('#step-rsvp').count(), 1);
+  await t.close();
+});
+
+test('who’s bringing what: take your own off; a host can take any off; empty says so', async () => {
+  const list = [{ id: 1, name: 'Pat', item: 'Chips', mine: false }, { id: 2, name: 'Lee', item: 'Salsa', mine: true }];
+  let t = await openEvent(makeEvent(), { get_poll_bring: () => list, remove_poll_bring: b => list.filter(x => x.id !== b.p_id) });
+  assert.equal(await t.page.locator('#step-bring button.x').count(), 1); // only your own
+  await t.page.click('#step-bring button[aria-label="Take Salsa off the list"]');
+  await t.page.waitForFunction(() => !document.querySelector('#step-bring').innerText.includes('Salsa'));
+  assert.deepEqual(t.state.calls.find(c => c.fn === 'remove_poll_bring').body, { p_code: 'ev12345', p_voter_key: VOTER, p_id: 2 });
+  await t.close();
+  t = await openEvent(makeEvent({ is_organizer: true }), { get_poll_bring: () => list });
+  assert.equal(await t.page.locator('#step-bring button.x').count(), 2);
+  await t.close();
+  t = await openEvent(makeEvent());
+  assert.match(await t.page.locator('#step-bring').innerText(), /Nothing yet\. Add what you’re bringing\./);
+  await t.close();
+});
+
+test('bring and note errors show in their own cards, also after the event', async () => {
+  const fail = () => ({ __status: 400, __body: { message: 'nope' } });
+  let t = await openEvent(makeEvent(), { add_poll_bring: fail });
+  await t.page.fill('#bring', 'Cookies');
+  await t.page.click('#step-bring .btn');
+  await t.page.waitForSelector('#step-bring .err');
+  assert.match(await t.page.locator('#step-bring .err').innerText(), /Couldn’t add that/);
+  await t.close();
+  // After the event (no RSVP card), a failed note still says so.
+  t = await openEvent(makeEvent({ event: { ...makeEvent().event, date: '2026-11-20' } }), { add_poll_comment: fail });
+  assert.equal(await t.page.locator('#step-rsvp').count(), 0);
+  await t.page.fill('#note', 'Great party');
+  await t.page.click('#step-notes .btn');
+  await t.page.waitForSelector('#step-notes .err');
+  assert.match(await t.page.locator('#step-notes .err').innerText(), /Couldn’t post that/);
+  await t.close();
+});
+
+test('an RSVP never sends more +1s than the event allows', async () => {
+  const t = await openEvent(makeEvent({ my_guests: 2, event: { ...makeEvent().event, plus_ones: 0 } }), { rsvp_event: (b, s) => s.ev });
+  await t.page.fill('#name', 'Lee');
+  await t.page.click('#step-rsvp .rsvp button:first-child');
+  for (let i = 0; i < 100 && !t.state.calls.some(c => c.fn === 'rsvp_event'); i++) await new Promise(r => setTimeout(r, 20));
+  assert.equal(t.state.calls.find(c => c.fn === 'rsvp_event').body.p_guests, 0);
+  await t.close();
+});
+
+test('on a phone, the page offers to open the event in the app', async () => {
+  let t = await openEvent(makeEvent(), {}, { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148' });
+  assert.equal(await t.page.locator('#openapp').getAttribute('href'), 'nearby://event/ev12345');
+  assert.match(await t.page.locator('#openapp').innerText(), /Open in the near\.by app/);
+  await t.close();
+  t = await openEvent(makeEvent());
+  assert.equal(await t.page.locator('#openapp').count(), 0); // a computer can't open it
+  await t.close();
+});
+
+test('the photo album link is http(s) only', async () => {
+  const past = album => makeEvent({ event: { ...makeEvent().event, date: '2026-11-20', album } });
+  let t = await openEvent(past('javascript:alert(1)'));
+  assert.equal(await t.page.locator('a', { hasText: 'Open the photo album' }).count(), 0);
+  await t.close();
+  t = await openEvent(past('photos.app.goo.gl/abc'));
+  assert.equal(await t.page.locator('a', { hasText: 'Open the photo album' }).getAttribute('href'), 'https://photos.app.goo.gl/abc');
   await t.close();
 });
