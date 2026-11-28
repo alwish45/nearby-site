@@ -55,6 +55,9 @@
   .actions { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
   .cta { display:block; text-align:center; background:var(--fill); color:#fff; text-decoration:none; font-weight:800; padding:14px; border-radius:14px; margin-top:24px; }
   .err { color:#b91c1c; font-weight:700; margin-top:8px; }
+  .bringitem { display:flex; align-items:center; gap:8px; }
+  .bringitem span { flex:1; }
+  .x { width:40px; height:40px; border:0; border-radius:20px; background:transparent; color:var(--muted); font-size:16px; font-weight:700; flex-shrink:0; }
 </style>
 </head>
 <body>
@@ -120,7 +123,7 @@ async function rpc(fn, body) {
   return j;
 }
 
-let ev = null, loadFailed = false, bring = [], guests = 0, answer = '', saving = false, error = '';
+let ev = null, loadFailed = false, bring = [], guests = 0, answer = '', saving = false, error = '', bringErr = '', noteErr = '';
 const typing = () => ['name', 'answer', 'bring', 'note'].includes(document.activeElement && document.activeElement.id);
 
 // Over: after it ends (or 6 hours after it starts with no end), in Utah time.
@@ -183,12 +186,15 @@ function render() {
     ${e.kind === 'book_club' && Array.isArray(e.questions) && e.questions.length ? `<div class="card" id="step-questions"><h2>💬 To talk about</h2>
       <ol class="qs">${e.questions.map(q => `<li>${esc(q)}</li>`).join('')}</ol></div>` : ''}
     ${e.potluck ? `<div class="card" id="step-bring"><h2>${e.kind === 'book_club' ? '🍪 Who’s bringing snacks' : '🥘 Who’s bringing what'}</h2>
-      ${bring.map(b => `<div class="guest">${esc(b.mine ? 'You' : b.name)} · ${esc(b.item)}</div>`).join('') || '<p class="small">Nothing yet.</p>'}
-      ${!ev.cancelled && !done ? `<div class="row" style="margin-top:10px"><input type="text" id="bring" maxlength="60" placeholder="I’m bringing…"><button class="btn" onclick="addBring()">Add</button></div>` : ''}</div>` : ''}
+      ${bring.map(b => `<div class="guest bringitem"><span>${esc(b.mine ? 'You' : b.name)} · ${esc(b.item)}</span>${b.mine || host ? `<button class="x" aria-label="Take ${esc(b.item)} off the list" onclick="removeBring(${Number(b.id)})">✕</button>` : ''}</div>`).join('')
+        || `<p class="small">${!ev.cancelled && !done ? 'Nothing yet. Add what you’re bringing.' : 'Nothing yet.'}</p>`}
+      ${!ev.cancelled && !done ? `<div class="row" style="margin-top:10px"><input type="text" id="bring" maxlength="60" placeholder="I’m bringing…"><button class="btn" onclick="addBring()">Add</button></div>` : ''}
+      ${bringErr ? `<p class="err">${esc(bringErr)}</p>` : ''}</div>` : ''}
     ${done && !ev.cancelled ? `<div class="card"><h2>How was it? 📸</h2>${e.album ? `<a class="ghost" href="${esc(e.album)}" target="_blank" rel="noopener">Open the photo album</a>` : '<p class="small">The host can add a shared photo album.</p>'}</div>` : ''}
     <div class="card" id="step-notes"><h2>Notes</h2>
       ${(ev.comments || []).slice(-20).map(n => `<div class="guest"><b>${esc(n.name)}</b> ${esc(n.body)}</div>`).join('') || '<p class="small">No notes yet.</p>'}
-      ${!ev.cancelled ? `<div class="row" style="margin-top:10px"><input type="text" id="note" maxlength="300" placeholder="Say something to everyone"><button class="btn" onclick="addNote()">Post</button></div>` : ''}</div>
+      ${!ev.cancelled ? `<div class="row" style="margin-top:10px"><input type="text" id="note" maxlength="300" placeholder="Say something to everyone"><button class="btn" onclick="addNote()">Post</button></div>` : ''}
+      ${noteErr ? `<p class="err">${esc(noteErr)}</p>` : ''}</div>
     ${host ? '<p class="small">You’re a host. Open near.by on your phone to edit the event, message guests or cancel it.</p>' : ''}`;
 }
 
@@ -201,6 +207,7 @@ async function answerRsvp(status) {
   if (!n.trim()) { error = 'Add your name so the host knows who’s coming.'; render(); return; }
   if (LINK.test(a)) { error = 'Leave links out of your answer.'; render(); return; }
   saving = true; answer = a;
+  guests = Math.min(Math.max(guests, 0), Number((ev.event || {}).plus_ones) || 0); // never more +1s than the event allows
   try { saveName(n.trim()); ev = await rpc('rsvp_event', { p_code: code, p_voter_key: me, p_status: status, p_name: n.trim(), p_guests: status === 'in' ? guests : 0, p_answer: a.trim() || null }); }
   catch (e) { error = /full|extra guest|cancelled|links/i.test(e.message) ? e.message.charAt(0).toUpperCase() + e.message.slice(1) + '.' : 'Couldn’t save that. Try again.'; }
   finally { saving = false; render(); }
@@ -208,15 +215,23 @@ async function answerRsvp(status) {
 async function addBring() {
   const it = ((document.getElementById('bring') || {}).value || '').trim();
   if (!it || saving) return;
-  saving = true;
-  try { bring = await rpc('add_poll_bring', { p_code: code, p_voter_key: me, p_name: myName || null, p_item: it }) || bring; } catch { error = 'Couldn’t add that. Try again.'; }
+  saving = true; bringErr = '';
+  try { bring = await rpc('add_poll_bring', { p_code: code, p_voter_key: me, p_name: myName || null, p_item: it }) || bring; }
+  catch (e) { bringErr = /full/.test(e.message) ? 'The list is full.' : /too many/.test(e.message) ? 'That’s a lot at once. Try again in a few minutes.' : 'Couldn’t add that. Try again.'; }
+  finally { saving = false; render(); }
+}
+// Take an item off: your own, or any item for a host (as on a plan's list).
+async function removeBring(id) {
+  if (saving) return;
+  saving = true; bringErr = '';
+  try { bring = await rpc('remove_poll_bring', { p_code: code, p_voter_key: me, p_id: id }) || []; } catch { bringErr = 'Couldn’t take that off. Try again.'; }
   finally { saving = false; render(); }
 }
 async function addNote() {
   const b = ((document.getElementById('note') || {}).value || '').trim();
   if (!b || saving) return;
-  saving = true;
-  try { await rpc('add_poll_comment', { p_code: code, p_voter_key: me, p_name: myName || null, p_body: b }); await load(true); } catch { error = 'Couldn’t post that. Try again.'; }
+  saving = true; noteErr = '';
+  try { await rpc('add_poll_comment', { p_code: code, p_voter_key: me, p_name: myName || null, p_body: b }); await load(true); } catch { noteErr = 'Couldn’t post that. Try again.'; }
   finally { saving = false; render(); }
 }
 

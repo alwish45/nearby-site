@@ -160,3 +160,46 @@ test('over goes by Utah time wherever the guest is', async () => {
   assert.equal(await t.page.locator('#step-rsvp').count(), 1);
   await t.close();
 });
+
+test('who’s bringing what: take your own off; a host can take any off; empty says so', async () => {
+  const list = [{ id: 1, name: 'Pat', item: 'Chips', mine: false }, { id: 2, name: 'Lee', item: 'Salsa', mine: true }];
+  let t = await openEvent(makeEvent(), { get_poll_bring: () => list, remove_poll_bring: b => list.filter(x => x.id !== b.p_id) });
+  assert.equal(await t.page.locator('#step-bring button.x').count(), 1); // only your own
+  await t.page.click('#step-bring button[aria-label="Take Salsa off the list"]');
+  await t.page.waitForFunction(() => !document.querySelector('#step-bring').innerText.includes('Salsa'));
+  assert.deepEqual(t.state.calls.find(c => c.fn === 'remove_poll_bring').body, { p_code: 'ev12345', p_voter_key: VOTER, p_id: 2 });
+  await t.close();
+  t = await openEvent(makeEvent({ is_organizer: true }), { get_poll_bring: () => list });
+  assert.equal(await t.page.locator('#step-bring button.x').count(), 2);
+  await t.close();
+  t = await openEvent(makeEvent());
+  assert.match(await t.page.locator('#step-bring').innerText(), /Nothing yet\. Add what you’re bringing\./);
+  await t.close();
+});
+
+test('bring and note errors show in their own cards, also after the event', async () => {
+  const fail = () => ({ __status: 400, __body: { message: 'nope' } });
+  let t = await openEvent(makeEvent(), { add_poll_bring: fail });
+  await t.page.fill('#bring', 'Cookies');
+  await t.page.click('#step-bring .btn');
+  await t.page.waitForSelector('#step-bring .err');
+  assert.match(await t.page.locator('#step-bring .err').innerText(), /Couldn’t add that/);
+  await t.close();
+  // After the event (no RSVP card), a failed note still says so.
+  t = await openEvent(makeEvent({ event: { ...makeEvent().event, date: '2026-11-20' } }), { add_poll_comment: fail });
+  assert.equal(await t.page.locator('#step-rsvp').count(), 0);
+  await t.page.fill('#note', 'Great party');
+  await t.page.click('#step-notes .btn');
+  await t.page.waitForSelector('#step-notes .err');
+  assert.match(await t.page.locator('#step-notes .err').innerText(), /Couldn’t post that/);
+  await t.close();
+});
+
+test('an RSVP never sends more +1s than the event allows', async () => {
+  const t = await openEvent(makeEvent({ my_guests: 2, event: { ...makeEvent().event, plus_ones: 0 } }), { rsvp_event: (b, s) => s.ev });
+  await t.page.fill('#name', 'Lee');
+  await t.page.click('#step-rsvp .rsvp button:first-child');
+  for (let i = 0; i < 100 && !t.state.calls.some(c => c.fn === 'rsvp_event'); i++) await new Promise(r => setTimeout(r, 20));
+  assert.equal(t.state.calls.find(c => c.fn === 'rsvp_event').body.p_guests, 0);
+  await t.close();
+});
