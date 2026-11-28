@@ -141,7 +141,7 @@
   .hangbar { background:linear-gradient(135deg,#fff1e6,#ffe4f1 60%,#ede9fe); border:1.5px solid #f6d7c3; border-radius:16px; padding:12px 14px; margin:4px 0 12px; }
   .hangbar .cd { font-weight:800; font-size:18px; margin:0 0 8px; }
   .hangrow { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-  .hangchip { display:inline-block; font-weight:700; font-size:14px; color:var(--ink); background:#fff; border:1.5px solid var(--line); border-radius:999px; padding:10px 12px; text-decoration:none; }
+  .hangchip { display:inline-block; font:inherit; font-weight:700; cursor:pointer; font-size:14px; color:var(--ink); background:#fff; border:1.5px solid var(--line); border-radius:999px; padding:10px 12px; text-decoration:none; }
   .floaty { position:fixed; z-index:60; font-size:26px; pointer-events:none; animation:floatup 1.1s ease-out forwards; }
   @keyframes floatup { from { transform:translateY(0) scale(.8); opacity:1; } to { transform:translateY(-120px) scale(1.4); opacity:0; } }
   .hangout { background:linear-gradient(180deg,#fff,#fffaf5); }
@@ -2052,8 +2052,8 @@ function hangbarHtml(fullyClosed) {
   return `<div class="hangbar">
     ${cd ? `<div class="cd">${esc(cd)}</div>` : ''}
     <div class="hangrow">
-      <a class="hangchip" href="#hangout-game">🎮 Play the game</a>
-      <a class="hangchip" href="#hangout">📸 ${photos ? `${photos} photo${photos === 1 ? '' : 's'}` : 'Photos'}</a>
+      <button class="hangchip" id="hangplay">🎮 Play the game</button>
+      <button class="hangchip" id="hangphotos">📸 ${photos ? `${photos} photo${photos === 1 ? '' : 's'}` : 'Photos'}</button>
     </div>
     <div class="who" style="margin:6px 0 0">${top ? `🏆 ${esc(top.name)} leads Night Out Dash with ${top.best}. Can you beat it?` : 'A quick game for the group: highest score wins bragging rights.'}</div>
   </div>`;
@@ -2086,19 +2086,46 @@ function hangoutHtml(fullyClosed) {
     ${photos.length ? `<div class="pgrid">${shown.map((ph, k) => `<button class="pthumb" data-photo="${k}" aria-label="Photo from ${esc(ph.name)}${ph.caption ? ': ' + esc(ph.caption) : ''}"><img src="${esc(photoUrl(ph.path))}" alt="" loading="lazy"></button>`).join('')}</div>
       ${photos.length > 9 ? `<button class="linkbtn" id="photomore">${photosAll ? 'Show fewer' : `Show all ${photos.length}`}</button>` : ''}`
       : '<div class="who" style="margin:0 0 8px">No photos yet. Pregame selfies, outfit checks, the view: share the vibe.</div>'}
-    ${canAdd ? '<label class="downbtn photoadd" for="photofile">📸 Add photos</label><input type="file" id="photofile" accept="image/*" multiple hidden>' : ''}
+    ${canAdd ? '<button class="downbtn photoadd" id="photoadd">📸 Add photos</button>' : ''}
     <div class="hsub" id="hangout-game" style="margin-top:16px">🎮 The game: Night Out Dash</div>
     <div class="who" style="margin:0 0 8px">Catch the tacos, drinks and tickets. Dodge the bill 🧾. ${GAME_SECS} seconds. Best score on the plan wins bragging rights.</div>
     ${board.length ? `<div class="board">${board.slice(0, 10).map((s, k) => `<div class="brow ${s.mine ? 'me' : ''}"><span>${medal(k)} ${esc(s.name)}${s.mine ? ' (you)' : ''}</span><b>${s.best}</b></div>`).join('')}</div>` : '<div class="who" style="margin:0 0 8px">No scores yet. Set the bar.</div>'}
     <button class="downbtn" id="playdash" ${fullyClosed ? 'disabled' : ''}>${mineS ? `▶ Play again · your best ${mineS.best}` : '▶ Play the game'}</button>
   </div>`;
 }
+// The photo picker's input lives outside the page's redraws: the page redraws
+// every 10 seconds, and the phone's photo picker is often open longer than that.
+// A replaced input never hears back from the picker, so the photos went nowhere.
+function photoInput() {
+  let el = document.getElementById('photofile');
+  if (!el) {
+    el = document.createElement('input');
+    el.type = 'file'; el.id = 'photofile'; el.accept = 'image/*'; el.multiple = true; el.hidden = true;
+    el.addEventListener('change', () => { const fs = [...(el.files || [])]; el.value = ''; if (fs.length) pickPhotos(fs); });
+    document.body.appendChild(el);
+  }
+  return el;
+}
+const toHangout = () => document.getElementById('hangout')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 function bindHangout() {
+  if ('photos' in poll) photoInput();
   document.getElementById('photomore')?.addEventListener('click', () => { photosAll = !photosAll; render(); });
   app.querySelectorAll('[data-photo]').forEach(b => b.addEventListener('click', () => openPhoto(Number(b.dataset.photo))));
-  document.getElementById('photofile')?.addEventListener('change', e => { const fs = [...(e.target.files || [])]; e.target.value = ''; if (fs.length) pickPhotos(fs); });
+  document.getElementById('photoadd')?.addEventListener('click', () => photoInput().click());
   document.getElementById('playdash')?.addEventListener('click', playDash);
+  document.getElementById('hangplay')?.addEventListener('click', playDash);
+  document.getElementById('hangphotos')?.addEventListener('click', toHangout);
+  // The app's "Play the game" and "Photos" open this page at #hangout-game or
+  // #hangout. The page draws after the plan loads, too late for the browser to
+  // jump there itself: do it once the hangout is on the page.
+  if (!hashDone && document.getElementById('hangout')) {
+    hashDone = true;
+    const h = location.hash;
+    if (h === '#hangout-game' && !document.getElementById('playdash')?.disabled) playDash();
+    else if (h === '#hangout' || h === '#hangout-game') setTimeout(toHangout, 50);
+  }
 }
+let hashDone = false;
 
 // Photos: shrink to a small JPEG in the browser, then upload.
 function shrink(file, max = 1600) {

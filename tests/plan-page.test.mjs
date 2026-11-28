@@ -1253,6 +1253,44 @@ describe('the hangout', () => {
     });
   });
 
+  test('the photo picker still works after the page refreshes while it’s open', async () => {
+    const rpc = { add_poll_photo: (b, s) => { s.poll.photos = [{ id: '00000000-0000-4000-8000-000000000009', path: b.p_path, name: b.p_name, caption: null, at: NOW, mine: true }]; return s.poll; } };
+    await withPlan(hang(), { name: 'Kai', rpc }, async t => {
+      const chooser = t.page.waitForEvent('filechooser');
+      await t.page.click('#photoadd');
+      const fc = await chooser;
+      // The page redraws every 10 seconds; on a phone the picker is often open longer.
+      await t.page.evaluate(() => render());
+      await fc.setFiles({ name: 'selfie.png', mimeType: 'image/png', buffer: PNG });
+      await t.page.click('#ph-ok');
+      await t.waitCall('add_poll_photo');
+      await t.page.waitForSelector('.pthumb[data-photo="0"]');
+    });
+  });
+
+  test('the top “Play the game” starts the game; “Photos” goes to the photos', async () => {
+    await withPlan(hang(), { name: 'Kai' }, async t => {
+      await t.page.click('#hangplay');
+      await t.page.waitForSelector('.game #g-go');
+      await t.page.locator('#g-x').dispatchEvent('click');
+      assert.equal(await count(t, '.game'), 0);
+      await t.page.click('#hangphotos');
+      await t.page.waitForFunction(() => document.getElementById('hangout').getBoundingClientRect().top < 50);
+    });
+  });
+
+  test('the app’s links: #hangout-game opens the game, #hangout goes to the photos', async () => {
+    await withPlan(hang(), { name: 'Kai', hash: '#hangout-game' }, async t => {
+      await t.page.waitForSelector('.game #g-go');
+      await t.page.evaluate(() => render());
+      assert.equal(await count(t, '.game'), 1, 'opens once, not on every redraw');
+    });
+    await withPlan(hang(), { name: 'Kai', hash: '#hangout' }, async t => {
+      await t.page.waitForFunction(() => document.getElementById('hangout').getBoundingClientRect().top < 50);
+      assert.equal(await count(t, '.game'), 0);
+    });
+  });
+
   test('older databases: no hangout', async () => {
     await withPlan(dinnerDrinks(), { name: 'Kai' }, async t => {
       assert.equal(await count(t, '.hangbar'), 0);
