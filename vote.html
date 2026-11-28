@@ -323,7 +323,8 @@ async function moveOption(i, to, time) {
   render();
 }
 const WD = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-const linkOf = u => (/^https?:\/\//i.test(u || '') ? u : u ? `https://${u}` : '');
+// http(s) only (a bare "example.com" gets https://); javascript:, data: and the like: no link.
+const linkOf = u => { const v = String(u || '').trim(); return /^https?:\/\//i.test(v) ? v : /^[a-z][a-z0-9+.-]*:/i.test(v) || !v ? '' : `https://${v}`; };
 function detailsHtml(o, i) {
   const d = (info && info[o.deal_id]) || {}, b = d.businesses || {};
   const days = (d.recurring_days || o.recurring_days || []).map(Number);
@@ -348,8 +349,8 @@ function detailsHtml(o, i) {
     <div class="dlinks">
       ${maps ? `<a href="${maps}" target="_blank" rel="noopener">🗺️ Map</a>` : ''}
       ${b.phone ? `<a href="tel:${esc(String(b.phone).replace(/[^0-9+]/g, ''))}">📞 Call</a>` : ''}
-      ${b.website ? `<a href="${esc(linkOf(b.website))}" target="_blank" rel="noopener">🌐 Website</a>` : ''}
-      ${b.menu_url ? `<a href="${esc(linkOf(b.menu_url))}" target="_blank" rel="noopener">📋 Menu</a>` : ''}
+      ${linkOf(b.website) ? `<a href="${esc(linkOf(b.website))}" target="_blank" rel="noopener">🌐 Website</a>` : ''}
+      ${linkOf(b.menu_url) ? `<a href="${esc(linkOf(b.menu_url))}" target="_blank" rel="noopener">📋 Menu</a>` : ''}
     </div>
   </div>`;
 }

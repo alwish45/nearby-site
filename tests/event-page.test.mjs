@@ -213,3 +213,13 @@ test('on a phone, the page offers to open the event in the app', async () => {
   assert.equal(await t.page.locator('#openapp').count(), 0); // a computer can't open it
   await t.close();
 });
+
+test('the photo album link is http(s) only', async () => {
+  const past = album => makeEvent({ event: { ...makeEvent().event, date: '2026-11-20', album } });
+  let t = await openEvent(past('javascript:alert(1)'));
+  assert.equal(await t.page.locator('a', { hasText: 'Open the photo album' }).count(), 0);
+  await t.close();
+  t = await openEvent(past('photos.app.goo.gl/abc'));
+  assert.equal(await t.page.locator('a', { hasText: 'Open the photo album' }).getAttribute('href'), 'https://photos.app.goo.gl/abc');
+  await t.close();
+});

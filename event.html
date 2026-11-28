@@ -112,6 +112,8 @@ function bookHtml(e) {
     ${bookLine(b) ? `<p class="small">${esc(bookLine(b))}</p>` : ''}
     ${e.reading ? `<p style="margin:8px 0 0"><b>📖 Read by then:</b> ${esc(e.reading)}</p>` : ''}</div></div>`;
 }
+// Links people typed (a photo album): http(s) only, else no link.
+const safeLink = u => { const v = String(u || '').trim(); return /^https?:\/\//i.test(v) ? v : /^[a-z][a-z0-9+.-]*:/i.test(v) || !v ? '' : `https://${v}`; };
 const LINK = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|co|ly|me|app|link|xyz)\b)/i;
 let myName = (() => { try { return localStorage.getItem('nearby.name') || ''; } catch { return ''; } })();
 const saveName = n => { myName = n; try { localStorage.setItem('nearby.name', n); } catch {} };
@@ -152,6 +154,7 @@ function render() {
   }
   const e = ev.event || {}, c = COVERS[e.cover] || COVERS.confetti, done = over(e), host = !!ev.is_organizer, h = ev.heads || {};
   const notDenver = Intl.DateTimeFormat().resolvedOptions().timeZone !== 'America/Denver';
+  const album = safeLink(e.album);
   const phone = /iPhone|iPad|Android/i.test(navigator.userAgent);
   const place = e.place || {};
   const list = Array.isArray(ev.guests) ? ev.guests.filter(g => g.status !== 'out' || host) : null;
@@ -192,7 +195,7 @@ function render() {
         || `<p class="small">${!ev.cancelled && !done ? 'Nothing yet. Add what you’re bringing.' : 'Nothing yet.'}</p>`}
       ${!ev.cancelled && !done ? `<div class="row" style="margin-top:10px"><input type="text" id="bring" maxlength="60" placeholder="I’m bringing…"><button class="btn" onclick="addBring()">Add</button></div>` : ''}
       ${bringErr ? `<p class="err">${esc(bringErr)}</p>` : ''}</div>` : ''}
-    ${done && !ev.cancelled ? `<div class="card"><h2>How was it? 📸</h2>${e.album ? `<a class="ghost" href="${esc(e.album)}" target="_blank" rel="noopener">Open the photo album</a>` : '<p class="small">The host can add a shared photo album.</p>'}</div>` : ''}
+    ${done && !ev.cancelled ? `<div class="card"><h2>How was it? 📸</h2>${album ? `<a class="ghost" href="${esc(album)}" target="_blank" rel="noopener">Open the photo album</a>` : '<p class="small">The host can add a shared photo album.</p>'}</div>` : ''}
     <div class="card" id="step-notes"><h2>Notes</h2>
       ${(ev.comments || []).slice(-20).map(n => `<div class="guest"><b>${esc(n.name)}</b> ${esc(n.body)}</div>`).join('') || '<p class="small">No notes yet.</p>'}
       ${!ev.cancelled ? `<div class="row" style="margin-top:10px"><input type="text" id="note" maxlength="300" placeholder="Say something to everyone"><button class="btn" onclick="addNote()">Post</button></div>` : ''}
