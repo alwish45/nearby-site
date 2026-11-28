@@ -99,3 +99,21 @@ test('the Add and Post buttons keep their word on one line on a phone', async ()
   }
   await t.close();
 });
+
+test('a book club shows the book, what to read, the questions and the snacks list', async () => {
+  const t = await openEvent(makeEvent({ title: 'December book club', event: { ...makeEvent().event, kind: 'book_club',
+    book: { title: 'Piranesi', author: 'Susanna Clarke', cover_id: 10520611, year: 2020, pages: 272 }, reading: 'The whole book',
+    questions: ['Who is the Other?', 'Would you leave the House?'] } }));
+  const text = await t.page.locator('#app').innerText();
+  assert.match(text, /THE BOOK/);
+  assert.match(text, /Piranesi/);
+  assert.match(text, /Susanna Clarke · 2020 · 272 pages/);
+  assert.match(text, /Read by then: The whole book/);
+  assert.match(text, /To talk about/);
+  assert.match(text, /Would you leave the House\?/);
+  assert.match(text, /Who’s bringing snacks/);
+  // The cover comes from Open Library (outside requests are blocked in tests, so the image itself drops out).
+  assert.equal(await t.page.evaluate(() => coverUrl(10520611, 'L')), 'https://covers.openlibrary.org/b/id/10520611-L.jpg');
+  assert.equal(await t.page.locator('.cover .icon').innerText(), '📚');
+  await t.close();
+});
