@@ -228,11 +228,6 @@ const API = 'https://vieoqoczhqbcxpflyjcp.supabase.co/rest/v1/rpc/';
 const KEY = 'sb_publishable_nxsW5dUJNZJJf-gjGzfHLg_hxUXa9RU';
 const code = (new URLSearchParams(location.search).get('p') || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const app = document.getElementById('app');
-// near.by isn't on Google Play yet: Android phones get a note, not an App Store page.
-if (/Android/i.test(navigator.userAgent)) {
-  const ga = document.getElementById('getapp');
-  if (ga) { ga.removeAttribute('href'); ga.setAttribute('aria-disabled', 'true'); ga.textContent = 'near.by is on iPhone now. Android is coming soon'; ga.style.opacity = '0.85'; ga.style.cursor = 'default'; }
-}
 
 function voterKey() {
   try {
@@ -2558,5 +2553,6 @@ async function load() {
 load();
 setInterval(load, 10000);
 </script>
+<script src="app-links.js"></script>
 </body>
 </html>
