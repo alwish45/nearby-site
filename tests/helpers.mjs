@@ -144,7 +144,7 @@ export const DEFAULT_RPC = {
 // Opens vote.html?p=test123 with a fake API. Options:
 //   rpc: { name: (body, state) => result }  overrides DEFAULT_RPC
 //   deals: rows for the deals REST lookup; nearby: { events, weekly, ongoing } for deals_around; near: deals_near_v3 rows
-//   now: the fixed clock; name: a name saved on this phone; storage: other localStorage keys; timezoneId
+//   hash: e.g. '#hangout-game'; now: the fixed clock; name: a name saved on this phone; storage: other localStorage keys; timezoneId
 export async function openPlan(poll, opts = {}) {
   const b = await getBrowser();
   const context = await b.newContext({ timezoneId: opts.timezoneId || 'America/Denver', viewport: { width: 420, height: 900 } });
@@ -186,7 +186,7 @@ export async function openPlan(poll, opts = {}) {
     if (u.pathname === '/rest/v1/deals') { state.calls.push({ fn: 'deals', url }); return reply(200, state.deals); }
     return reply(404, { message: 'not found' });
   });
-  await page.goto(`${PAGE_URL}?p=${CODE}`);
+  await page.goto(`${PAGE_URL}?p=${CODE}${opts.hash || ''}`);
   await page.waitForSelector('#app h1');
   const api = {
     page, context, state,
