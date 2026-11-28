@@ -203,3 +203,13 @@ test('an RSVP never sends more +1s than the event allows', async () => {
   assert.equal(t.state.calls.find(c => c.fn === 'rsvp_event').body.p_guests, 0);
   await t.close();
 });
+
+test('on a phone, the page offers to open the event in the app', async () => {
+  let t = await openEvent(makeEvent(), {}, { userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Mobile/15E148' });
+  assert.equal(await t.page.locator('#openapp').getAttribute('href'), 'nearby://event/ev12345');
+  assert.match(await t.page.locator('#openapp').innerText(), /Open in the near\.by app/);
+  await t.close();
+  t = await openEvent(makeEvent());
+  assert.equal(await t.page.locator('#openapp').count(), 0); // a computer can't open it
+  await t.close();
+});

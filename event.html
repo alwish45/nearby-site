@@ -152,6 +152,7 @@ function render() {
   }
   const e = ev.event || {}, c = COVERS[e.cover] || COVERS.confetti, done = over(e), host = !!ev.is_organizer, h = ev.heads || {};
   const notDenver = Intl.DateTimeFormat().resolvedOptions().timeZone !== 'America/Denver';
+  const phone = /iPhone|iPad|Android/i.test(navigator.userAgent);
   const place = e.place || {};
   const list = Array.isArray(ev.guests) ? ev.guests.filter(g => g.status !== 'out' || host) : null;
   document.title = `${ev.title || 'An event'} · near.by`;
@@ -171,6 +172,7 @@ function render() {
     <div class="actions">
       ${!ev.cancelled ? `<a class="ghost" href="${esc(calLink(e))}" target="_blank" rel="noopener">🗓️ Add to calendar</a>` : ''}
       ${(place.address || place.business) && !e.address_hidden ? `<a class="ghost" href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.address || place.business)}" target="_blank" rel="noopener">🧭 Directions</a>` : ''}
+      ${phone ? `<a class="ghost" id="openapp" href="nearby://event/${esc(code)}">📱 Open in the near.by app</a>` : ''}
     </div>
     ${!ev.cancelled && !done ? `<div class="card" id="step-rsvp"><h2>Are you going?</h2>
       <label for="name">Your name</label><input type="text" id="name" maxlength="30" value="${esc(myName)}" placeholder="Your name">
