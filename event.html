@@ -81,7 +81,20 @@ const me = voterKey();
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const t12 = t => { if (!t) return ''; const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}${m ? ':' + String(m).padStart(2, '0') : ''}${h < 12 ? 'am' : 'pm'}`; };
 const mins = t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + (m || 0); };
-const longDay = d => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+// Utah wall-clock time, wherever the guest is (as vote.html does).
+const utahNow = () => new Date(new Date().toLocaleString('en-US', { timeZone: 'America/Denver' }));
+// Start times run 5am to 2am that night: a 12:30am start on a Saturday event is
+// Saturday night, so Sunday 12:30am on a calendar (the app's eventStartDay).
+const isNight = t => !!t && mins(t) < 5 * 60;
+const nextIso = d => { const x = new Date(d + 'T12:00:00'); x.setDate(x.getDate() + 1); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+const startDay = e => (isNight(e.start) ? nextIso(e.date) : e.date);
+// "Saturday, Nov 28 · 7pm–1am (next day)", or "Saturday night, Nov 28 · 12:30am" for a 12–2am start.
+function whenText(e) {
+  const d = new Date(e.date + 'T12:00:00');
+  const wk = d.toLocaleDateString('en-US', { weekday: 'long' }), md = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const late = e.end && mins(e.end) < mins(e.start) ? ' (next day)' : '';
+  return `${isNight(e.start) ? `${wk} night` : wk}, ${md} · ${t12(e.start)}${e.end ? '–' + t12(e.end) + late : ''}`;
+}
 const KINDS = { party: '🎉', birthday: '🎂', game_night: '🎲', dinner: '🍽️', shower: '🍼', graduation: '🎓', holiday: '🎄', meetup: '👋', book_club: '📚', other: '✨' };
 const COVERS = { confetti: ['#FFE2CC', '#E8542A', '#14110D'], sunset: ['#FFD6A5', '#C2410C', '#14110D'], night: ['#1F2A44', '#7C8CF8', '#FAF8F4'], garden: ['#DFF3E4', '#1E7A46', '#14110D'],
   gold: ['#F7E7B4', '#A16207', '#14110D'], ocean: ['#D6ECFA', '#1D6FA5', '#14110D'], rose: ['#FBE0E6', '#BE185D', '#14110D'], mint: ['#DDF7F1', '#0F766E', '#14110D'] };
@@ -110,14 +123,17 @@ async function rpc(fn, body) {
 let ev = null, loadFailed = false, bring = [], guests = 0, answer = '', saving = false, error = '';
 const typing = () => ['name', 'answer', 'bring', 'note'].includes(document.activeElement && document.activeElement.id);
 
+// Over: after it ends (or 6 hours after it starts with no end), in Utah time.
 function over(e) {
-  const start = new Date(e.date + 'T12:00:00'); const [h, m] = e.start.split(':').map(Number); start.setHours(h, m, 0, 0);
+  if (!e.date || !e.start) return false;
+  const start = new Date(startDay(e) + 'T12:00:00'); const [h, m] = e.start.split(':').map(Number); start.setHours(h, m, 0, 0);
   let end = new Date(start.getTime() + 6 * 3600e3);
   if (e.end) { end = new Date(start); const [eh, em] = e.end.split(':').map(Number); end.setHours(eh, em, 0, 0); if (end <= start) end.setDate(end.getDate() + 1); }
-  return Date.now() > end.getTime();
+  return utahNow() > end;
 }
+// Google Calendar: the real start (12:30am is the next calendar day), to the end time when there is one.
 function calLink(e) {
-  const pad = n => String(n).padStart(2, '0'), [y, mo, d] = e.date.split('-').map(Number), [h, mi] = e.start.split(':').map(Number);
+  const pad = n => String(n).padStart(2, '0'), [y, mo, d] = startDay(e).split('-').map(Number), [h, mi] = e.start.split(':').map(Number);
   const s = new Date(Date.UTC(y, mo - 1, d, h, mi)), en = new Date(s.getTime() + (e.end ? (((mins(e.end) - mins(e.start)) + 1440) % 1440 || 180) : 180) * 60000);
   const f = t => `${t.getUTCFullYear()}${pad(t.getUTCMonth() + 1)}${pad(t.getUTCDate())}T${pad(t.getUTCHours())}${pad(t.getUTCMinutes())}00`;
   const where = (e.place && (e.place.address || e.place.business || e.place.title)) || '';
@@ -133,7 +149,6 @@ function render() {
   }
   const e = ev.event || {}, c = COVERS[e.cover] || COVERS.confetti, done = over(e), host = !!ev.is_organizer, h = ev.heads || {};
   const notDenver = Intl.DateTimeFormat().resolvedOptions().timeZone !== 'America/Denver';
-  const late = e.end && mins(e.end) < mins(e.start) ? ' (next day)' : '';
   const place = e.place || {};
   const list = Array.isArray(ev.guests) ? ev.guests.filter(g => g.status !== 'out' || host) : null;
   document.title = `${ev.title || 'An event'} · near.by`;
@@ -141,7 +156,7 @@ function render() {
     ${!host ? '<p class="what">You’re invited to an event on near.by. See the details and say if you can make it.</p>' : ''}
     <div class="cover" style="background:${c[0]};color:${c[2]}"><div class="band" style="background:${c[1]}"></div>
       <div class="icon">${KINDS[e.kind] || '🎉'}</div><h1>${esc(ev.title)}</h1>
-      <div class="when">${esc(longDay(e.date))} · ${esc(t12(e.start))}${e.end ? '–' + esc(t12(e.end)) + late : ''}</div>
+      <div class="when">${esc(whenText(e))}</div>
       ${notDenver ? '<div class="small" style="color:inherit">🕐 Utah time (MT)</div>' : ''}</div>
     ${ev.cancelled ? '<p class="banner">🚫 This event was cancelled.</p>' : ''}
     ${e.updated_at && !ev.cancelled ? `<p class="small">Updated ${esc(new Date(e.updated_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }))}</p>` : ''}

@@ -19,14 +19,15 @@ function makeEvent(over = {}) {
   };
 }
 
-async function openEvent(ev, rpc = {}) {
+// opts: timezoneId (where the guest is), userAgent (a phone), now (the fixed clock).
+async function openEvent(ev, rpc = {}, opts = {}) {
   const b = await getBrowser();
-  const context = await b.newContext({ timezoneId: 'America/Denver', viewport: { width: 390, height: 900 } });
+  const context = await b.newContext({ timezoneId: opts.timezoneId || 'America/Denver', viewport: { width: 390, height: 900 }, ...(opts.userAgent ? { userAgent: opts.userAgent } : {}) });
   const page = await context.newPage();
   const state = { ev, calls: [], errors: [] };
   page.on('pageerror', e => state.errors.push(String(e)));
   await context.addInitScript(k => { try { localStorage.setItem('nearby.voter', k); } catch {} }, VOTER);
-  await page.clock.setFixedTime(new Date('2026-11-26T12:00:00-07:00'));
+  await page.clock.setFixedTime(new Date(opts.now || '2026-11-26T12:00:00-07:00'));
   await context.route('**/*', async route => {
     const req = route.request(), u = new URL(req.url());
     if (u.protocol === 'file:') return route.continue();
@@ -115,5 +116,47 @@ test('a book club shows the book, what to read, the questions and the snacks lis
   // The cover comes from Open Library (outside requests are blocked in tests, so the image itself drops out).
   assert.equal(await t.page.evaluate(() => coverUrl(10520611, 'L')), 'https://covers.openlibrary.org/b/id/10520611-L.jpg');
   assert.equal(await t.page.locator('.cover .icon').innerText(), '📚');
+  await t.close();
+});
+
+// A 12–2am start is that night's: Thursday 12:30am on a Thursday event is early Friday.
+const lateEvent = (date, over = {}) => makeEvent({ event: { ...makeEvent().event, date, start: '00:30', end: '02:00', ...over } });
+
+test('a 12:30am start reads as that night and goes on the next calendar day', async () => {
+  const t = await openEvent(lateEvent('2026-11-28'));
+  assert.match(await t.page.locator('.when').innerText(), /^Saturday night, Nov 28 · 12:30am–2am$/);
+  const href = await t.page.locator('a', { hasText: 'Add to calendar' }).getAttribute('href');
+  assert.match(href, /dates=20261129T003000\/20261129T020000&ctz=America\/Denver/);
+  await t.close();
+});
+
+test('calendar runs to the end time, past midnight too', async () => {
+  const t = await openEvent(makeEvent()); // Sat 7pm–1am
+  const href = await t.page.locator('a', { hasText: 'Add to calendar' }).getAttribute('href');
+  assert.match(href, /dates=20261128T190000\/20261129T010000/);
+  await t.close();
+});
+
+test('a late start isn’t over until it has happened', async () => {
+  // Thursday noon: a "Thursday 12:30am" event is tonight (Friday 12:30am), so the RSVP is still open.
+  let t = await openEvent(lateEvent('2026-11-26'));
+  assert.equal(await t.page.locator('#step-rsvp').count(), 1);
+  await t.close();
+  // Wednesday's ran this morning (Thursday 12:30–2am): over.
+  t = await openEvent(lateEvent('2026-11-25'));
+  assert.equal(await t.page.locator('#step-rsvp').count(), 0);
+  assert.match(await t.page.locator('#app').innerText(), /How was it\?/);
+  await t.close();
+});
+
+test('over goes by Utah time wherever the guest is', async () => {
+  // 7pm–10pm Thursday in Utah; it's 11pm in Utah (Friday afternoon in Tokyo), so it's over.
+  const ev = makeEvent({ event: { ...makeEvent().event, date: '2026-11-26', start: '19:00', end: '22:00' } });
+  let t = await openEvent(ev, {}, { timezoneId: 'Asia/Tokyo', now: '2026-11-26T23:00:00-07:00' });
+  assert.equal(await t.page.locator('#step-rsvp').count(), 0);
+  await t.close();
+  // 6pm in Utah (Friday 10am in Tokyo): not yet.
+  t = await openEvent(ev, {}, { timezoneId: 'Asia/Tokyo', now: '2026-11-26T18:00:00-07:00' });
+  assert.equal(await t.page.locator('#step-rsvp').count(), 1);
   await t.close();
 });
