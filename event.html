@@ -65,10 +65,6 @@ const API = 'https://vieoqoczhqbcxpflyjcp.supabase.co/rest/v1/rpc/';
 const KEY = 'sb_publishable_nxsW5dUJNZJJf-gjGzfHLg_hxUXa9RU';
 const code = (new URLSearchParams(location.search).get('e') || '').toLowerCase().replace(/[^a-z0-9]/g, '');
 const app = document.getElementById('app');
-if (/Android/i.test(navigator.userAgent)) {
-  const ga = document.getElementById('getapp');
-  ga.removeAttribute('href'); ga.textContent = 'near.by is on iPhone now. Android is coming soon'; ga.style.opacity = '0.85';
-}
 function voterKey() {
   try {
     let k = localStorage.getItem('nearby.voter');
@@ -207,5 +203,6 @@ async function load(force = false) {
 load();
 setInterval(load, 15000);
 </script>
+<script src="app-links.js"></script>
 </body>
 </html>

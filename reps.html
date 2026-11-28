@@ -74,15 +74,6 @@
   <a class="cta" href="https://apps.apple.com/us/app/id6812937568">Get near.by on the App Store</a>
   <p class="muted">Reps are independent contractors. Earnings are paid from business payments only. <a href="rep-terms.html">Rep Terms</a> · <a href="mailto:nearbyutah@gmail.com">nearbyutah@gmail.com</a></p>
 </main>
-<script>
-// near.by is on iPhone now; on Android phones the App Store link would be a dead end.
-if (/Android/i.test(navigator.userAgent)) document.querySelectorAll('a[href*="apps.apple.com"]').forEach(a => {
-  const note = document.createElement('span');
-  note.className = a.className; note.style.background = '#5c564d'; note.style.cursor = 'default';
-  note.textContent = 'Coming soon to Android';
-  note.setAttribute('role', 'note');
-  a.replaceWith(note);
-});
-</script>
+<script src="app-links.js"></script>
 </body>
 </html>
