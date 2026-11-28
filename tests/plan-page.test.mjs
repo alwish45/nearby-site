@@ -1268,14 +1268,11 @@ describe('the hangout', () => {
     });
   });
 
-  test('the top “Play the game” starts the game; “Photos” goes to the photos', async () => {
+  test('the top of the page has the countdown, not the photos or the game', async () => {
     await withPlan(hang(), { name: 'Kai' }, async t => {
-      await t.page.click('#hangplay');
-      await t.page.waitForSelector('.game #g-go');
-      await t.page.locator('#g-x').dispatchEvent('click');
-      assert.equal(await count(t, '.game'), 0);
-      await t.page.click('#hangphotos');
-      await t.page.waitForFunction(() => document.getElementById('hangout').getBoundingClientRect().top < 50);
+      assert.match(await t.text('.hangbar'), /⏳ 1 day 5 hrs to go/);
+      assert.doesNotMatch(await t.text('.hangbar'), /game|Photos/i);
+      assert.equal(await count(t, '.hangbar .hangchip'), 0);
     });
   });
 

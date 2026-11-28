@@ -140,8 +140,6 @@
   .autoline { display:flex; justify-content:space-between; align-items:center; gap:10px; margin:0 0 8px; padding:8px 12px; border-radius:12px; background:#fff1e6; font-weight:700; font-size:15px; text-align:left; }
   .hangbar { background:linear-gradient(135deg,#fff1e6,#ffe4f1 60%,#ede9fe); border:1.5px solid #f6d7c3; border-radius:16px; padding:12px 14px; margin:4px 0 12px; }
   .hangbar .cd { font-weight:800; font-size:18px; margin:0 0 8px; }
-  .hangrow { display:flex; gap:8px; flex-wrap:wrap; align-items:center; }
-  .hangchip { display:inline-block; font:inherit; font-weight:700; cursor:pointer; font-size:14px; color:var(--ink); background:#fff; border:1.5px solid var(--line); border-radius:999px; padding:10px 12px; text-decoration:none; }
   .floaty { position:fixed; z-index:60; font-size:26px; pointer-events:none; animation:floatup 1.1s ease-out forwards; }
   @keyframes floatup { from { transform:translateY(0) scale(.8); opacity:1; } to { transform:translateY(-120px) scale(1.4); opacity:0; } }
   .hangout { background:linear-gradient(180deg,#fff,#fffaf5); }
@@ -2012,7 +2010,7 @@ async function inviteMore() {
   catch { prompt('Copy the invite:', text); }
 }
 // ---------------------------------------------------------------------------
-// The hangout: a countdown, the game and photos at the top, and a photo wall and a
+// The hangout: a countdown at the top, and further down a photo wall and a
 // mini-game with a leaderboard for the plan (scripts/add_plan_hangout.sql in
 // the app repo). Older databases without these just don't show them.
 const STORAGE = API.replace('/rest/v1/rpc/', '/storage/v1/');
@@ -2047,16 +2045,8 @@ function countdownText() {
 function hangbarHtml(fullyClosed) {
   if (!('photos' in poll) || fullyClosed) return '';
   const cd = countdownText();
-  const photos = (poll.photos || []).length;
-  const top = (poll.scores || []).filter(x => x.game === 'dash')[0];
-  return `<div class="hangbar">
-    ${cd ? `<div class="cd">${esc(cd)}</div>` : ''}
-    <div class="hangrow">
-      <button class="hangchip" id="hangplay">🎮 Play the game</button>
-      <button class="hangchip" id="hangphotos">📸 ${photos ? `${photos} photo${photos === 1 ? '' : 's'}` : 'Photos'}</button>
-    </div>
-    <div class="who" style="margin:6px 0 0">${top ? `🏆 ${esc(top.name)} leads Night Out Dash with ${top.best}. Can you beat it?` : 'A quick game for the group: highest score wins bragging rights.'}</div>
-  </div>`;
+  // Just the countdown up top: the photos and the game stay in the hangout further down.
+  return cd ? `<div class="hangbar"><div class="cd">${esc(cd)}</div></div>` : '';
 }
 // Emoji that float up from where you tapped.
 function burst(ev, emoji, count = 1) {
@@ -2113,8 +2103,6 @@ function bindHangout() {
   app.querySelectorAll('[data-photo]').forEach(b => b.addEventListener('click', () => openPhoto(Number(b.dataset.photo))));
   document.getElementById('photoadd')?.addEventListener('click', () => photoInput().click());
   document.getElementById('playdash')?.addEventListener('click', playDash);
-  document.getElementById('hangplay')?.addEventListener('click', playDash);
-  document.getElementById('hangphotos')?.addEventListener('click', toHangout);
   // The app's "Play the game" and "Photos" open this page at #hangout-game or
   // #hangout. The page draws after the plan loads, too late for the browser to
   // jump there itself: do it once the hangout is on the page.
