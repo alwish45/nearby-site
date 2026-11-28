@@ -642,6 +642,52 @@ describe('tickets', () => {
   });
 });
 
+describe('show nights: rides and a festival lineup', () => {
+  const fest = (over = {}) => makePoll({ parts: [{ name: 'Show', time: '19:00' }],
+    options: [opt({ title: 'Block Party', business: 'Kilby Court', deal_type: 'limited_run', start_time: '12:00:00', valid_from: '2027-05-15', deal_id: 'f1', part: 0 })],
+    tickets: [], ...over });
+  const lineup = { festival: true, lineup: [{ name: 'Opener', start: '18:00', stage: 'Main' }, { name: 'Headliner', start: '21:00', stage: 'Main' }, { name: 'Sunday Act', date: '2027-05-16', start: '20:00' }] };
+  const rpc = rides => ({
+    get_poll_rides: () => rides,
+    set_poll_ride: (b) => { const rest = rides.filter(r => !r.mine); rides = b.p_role ? [...rest, { name: b.p_name, role: b.p_role, seats: b.p_role === 'drive' ? b.p_seats : null, mine: true }] : rest; return rides; },
+    deal_show: () => lineup,
+    get_poll_sets: () => [{ deal_id: 'f1', set_key: '|Main|21:00|headliner', name: 'Ana', mine: false }],
+    toggle_poll_set: (b) => [{ deal_id: 'f1', set_key: '|Main|21:00|headliner', name: 'Ana', mine: false }, { deal_id: 'f1', set_key: b.p_set_key, name: b.p_name, mine: true }],
+  });
+  test('who can drive and who needs a ride; seats', async () => {
+    await withPlan(fest(), { name: 'Sam', rpc: rpc([{ name: 'Ana', role: 'need', seats: null, mine: false }]) }, async t => {
+      await t.page.waitForSelector('#step-rides');
+      assert.equal(await t.text('#step-rides .m'), 'Ana needs a ride · 1 more seat needed');
+      await t.page.click('[data-ride="drive"]');
+      assert.deepEqual(await t.waitCall('set_poll_ride'), { p_code: CODE, p_voter_key: VOTER, p_name: 'Sam', p_role: 'drive', p_seats: 3 });
+      await t.page.waitForSelector('[data-seats="2"]');
+      assert.equal(await t.text('#step-rides .m'), 'You can drive (3 seats) · Ana needs a ride');
+      await t.page.click('[data-seats="1"]');
+      await t.waitCall('set_poll_ride', 2);
+      assert.equal(t.calls('set_poll_ride')[1].p_seats, 1);
+    });
+  });
+  test('a festival’s lineup: days, who’s seeing what, pick a set', async () => {
+    await withPlan(fest(), { name: 'Sam', rpc: rpc([]) }, async t => {
+      await t.page.waitForSelector('[data-fest="f1"]');
+      await t.page.click('[data-fest="f1"]');
+      await t.page.waitForSelector('[data-setkey]');
+      assert.equal(await count(t, '[data-festday]'), 2);
+      assert.equal(await count(t, '[data-setkey]'), 2, 'the first day’s sets');
+      assert.match(await t.text('[data-setkey="|Main|21:00|headliner"]'), /Headliner[\s\S]*👥 Ana/);
+      await t.page.click('[data-setkey="|Main|18:00|opener"]');
+      assert.deepEqual(await t.waitCall('toggle_poll_set'), { p_code: CODE, p_voter_key: VOTER, p_deal_id: 'f1', p_set_key: '|Main|18:00|opener', p_name: 'Sam' });
+      await t.page.waitForSelector('[data-setkey="|Main|18:00|opener"].on');
+      await t.page.click('[data-festday="1"]');
+      await t.page.waitForSelector('[data-setkey="2027-05-16||20:00|sunday act"]');
+    });
+  });
+  test('no rides box when the database doesn’t have rides yet, or no show is in the plan', async () => {
+    await withPlan(fest(), async t => { await t.waitCall('get_poll_rides'); await t.page.waitForTimeout(150); assert.equal(await count(t, '#step-rides'), 0); });
+    await withPlan(dinnerDrinks(), async t => assert.equal(await count(t, '#step-rides'), 0));
+  });
+});
+
 describe('organizers', () => {
   test('friends (not organizers) see no organizer controls', async () => {
     await withPlan(dinnerDrinks({ counts: [2, 1, 0] }), async t => {

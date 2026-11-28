@@ -192,7 +192,7 @@ export async function openPlan(poll, opts = {}) {
     page, context, state,
     calls: fn => state.calls.filter(c => c.fn === fn).map(c => c.body),
     // RPC calls other than reads (what the page changed).
-    writes: () => state.calls.filter(c => !['get_poll', 'get_poll_bring', 'deals', 'deals_around', 'deals_near_v3'].includes(c.fn)),
+    writes: () => state.calls.filter(c => !['get_poll', 'get_poll_bring', 'get_poll_rides', 'get_poll_sets', 'deal_show', 'deals', 'deals_around', 'deals_near_v3'].includes(c.fn)),
     text: sel => page.locator(sel).first().innerText(),
     // The text as written (innerText follows CSS, e.g. upper-case headings).
     raw: async sel => (await page.locator(sel).first().textContent()).trim(),

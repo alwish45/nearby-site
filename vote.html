@@ -455,6 +455,7 @@ function render() {
     ${parted ? nightHtml(final ? final.parts : partWin, people, !!final, pastDay) : ''}
     ${isOrg() && !final && !poll.closed && poll.options.length ? `<div class="lockbox"><button class="lockbtn" id="lockin">🔒 Lock it in</button><div class="who" style="margin:6px 0 0">When the group has decided: makes it the final plan (the winning place at each time, and the day and times most can make), stops the voting and tells everyone.</div></div>` : ''}
     ${isPotluckPoll() ? bringHtml(fullyClosed) : ''}
+    ${hasShow() ? showPlanHtml(fullyClosed) : ''}
     ${parted && rsvpShown ? rsvpHtml(final, fullyClosed) : ''}
     ${stepsHtml(sections, mine, final, invite, parted, rsvpShown)}
     ${parted && !final && !poll.closed ? '<h2 class="sec">Help shape it</h2>' : ''}
@@ -562,6 +563,7 @@ function render() {
   document.getElementById('unlockbtn')?.addEventListener('click', unlock);
   app.querySelectorAll('[data-ticket]').forEach(b => b.addEventListener('click', () => toggleTicket(b.dataset.ticket)));
   bindBring();
+  bindShowPlan();
   document.getElementById('actmore')?.addEventListener('click', () => { actAll = !actAll; render(); });
   document.getElementById('stopclose')?.addEventListener('click', () => { stopOpen = false; adding = false; addPart = null; addDay = null; render(); });
   document.body.classList.toggle('has-fab', !!document.getElementById('fab'));
@@ -2345,6 +2347,85 @@ async function toggleTicket(id) {
   return once(async () => { try { poll = await rpc('toggle_poll_ticket', { p_code: code, p_voter_key: me, p_deal_id: id, p_name: myName() }); render(); }
     catch (e) { alert(/could not find the function/i.test(e.message) ? 'Tickets aren’t switched on yet.' : /closed/.test(e.message) ? 'This plan has closed.' : "Couldn't save that. Try again."); } });
 }
+// A plan with a show in it (scripts/add_shows.sql in the app repo): how
+// everyone's getting there, and a festival's lineup, where friends pick sets
+// and see who's seeing what. Kept apart from get_poll, like the potluck list.
+const hasShow = () => !!poll && (poll.options || []).some(isTicketed);
+let rides = null, ridesOff = false, fests = {}, festOpen = null, festDay = 0, setRows = [];
+const setKey = x => [x.date || '', x.stage || '', x.start || '', String(x.name || '').toLowerCase()].join('|');
+const nightM = t => { const [h, m] = String(t).split(':').map(Number); const x = h * 60 + (m || 0); return x < 300 ? x + 1440 : x; };
+async function loadShowPlan() {
+  if (!code || !hasShow() || ridesOff) return;
+  try { rides = await rpc('get_poll_rides', { p_code: code, p_voter_key: me }); }
+  catch (e) { if (/could not find the function/i.test(e.message || '')) { ridesOff = true; if (!typingIn() && !saving) render(); return; } }
+  for (const o of poll.options.filter(isTicketed)) {
+    if (o.deal_id in fests) continue;
+    fests[o.deal_id] = null;
+    try { const sh = await rpc('deal_show', { p_deal_id: String(o.deal_id) }); if (sh && sh.festival && (sh.lineup || []).length) fests[o.deal_id] = sh; } catch {}
+  }
+  if (Object.values(fests).some(Boolean)) { try { setRows = await rpc('get_poll_sets', { p_code: code, p_voter_key: me }) || []; } catch {} }
+  if (!typingIn() && !saving) render();
+}
+function showPlanHtml(fullyClosed) {
+  if (ridesOff) return '';
+  const list = Array.isArray(rides) ? rides : [];
+  const drivers = list.filter(r => r.role === 'drive'), need = list.filter(r => r.role === 'need');
+  const seats = drivers.reduce((n, r) => n + (Number(r.seats) || 0), 0), short = Math.max(need.length - seats, 0);
+  const mine = list.find(r => r.mine) || null;
+  const line = !drivers.length && !need.length ? 'Nobody’s said how they’re getting there yet' : [drivers.length ? `${drivers.map(r => r.mine ? 'You' : r.name).join(', ')} can drive (${seats} seat${seats === 1 ? '' : 's'})` : '',
+    need.length ? `${need.map(r => r.mine ? 'You' : r.name).join(', ')} need${need.length === 1 ? 's' : ''} a ride` : '', short ? `${short} more seat${short === 1 ? '' : 's'} needed` : ''].filter(Boolean).join(' · ');
+  const festHtml = poll.options.filter(o => fests[o.deal_id]).map(o => festHtmlFor(o, fests[o.deal_id], fullyClosed)).join('');
+  return `${festHtml}<div class="down" id="step-rides"><h2>🚗 Getting there</h2>
+    <div class="m">${rides == null ? 'Loading…' : esc(line)}</div>
+    ${fullyClosed || rides == null ? '' : `<div class="chips" style="padding-top:6px">
+      <button class="chip ${mine && mine.role === 'drive' ? 'on' : ''}" data-ride="drive" aria-pressed="${!!(mine && mine.role === 'drive')}">${mine && mine.role === 'drive' ? '✓ I can drive' : 'I can drive'}</button>
+      <button class="chip ${mine && mine.role === 'need' ? 'on' : ''}" data-ride="need" aria-pressed="${!!(mine && mine.role === 'need')}">${mine && mine.role === 'need' ? '✓ I need a ride' : 'I need a ride'}</button></div>
+      ${mine && mine.role === 'drive' ? `<div class="chips"><span class="who" style="margin:0 4px 0 0">Seats for others:</span>${[1, 2, 3, 4, 5].map(n => `<button class="chip ${mine.seats === n ? 'on' : ''}" data-seats="${n}" aria-label="${n} seat${n === 1 ? '' : 's'}">${n}</button>`).join('')}</div>` : ''}`}</div>`;
+}
+function festHtmlFor(o, sh, fullyClosed) {
+  const open = festOpen === o.deal_id;
+  const head = `<button class="linkbtn" data-fest="${esc(o.deal_id)}" style="font-weight:800">${open ? 'Hide the lineup' : 'See the lineup · pick your sets ›'}</button>`;
+  if (!open) return `<div class="down"><h2>🎪 ${esc(o.title)}</h2><div class="m">Pick the sets you want to see. Everyone on the plan sees who’s seeing what.</div>${head}</div>`;
+  const first = o.valid_from || '';
+  const days = [...new Set(sh.lineup.map(x => x.date || first))].sort();
+  const d = days[Math.min(festDay, days.length - 1)];
+  const who = {};
+  setRows.filter(r => r.deal_id === String(o.deal_id)).forEach(r => { (who[r.set_key] = who[r.set_key] || []).push(r.mine ? 'You' : r.name); });
+  const sets = sh.lineup.filter(x => (x.date || first) === d).sort((a, b) => (a.stage || '').localeCompare(b.stage || '') || (a.start ? nightM(a.start) : 9999) - (b.start ? nightM(b.start) : 9999));
+  let stage = null;
+  const rows = sets.map(x => {
+    const k = setKey(x), names = who[k] || [], on = names.includes('You');
+    const st = (x.stage || '') !== stage ? (stage = x.stage || '', stage ? `<div class="who" style="margin:10px 0 4px;font-weight:800;text-transform:uppercase">${esc(stage)}</div>` : '') : '';
+    return `${st}<button class="chip ${on ? 'on' : ''}" data-set="${esc(o.deal_id)}" data-setkey="${esc(k)}" aria-pressed="${on}" ${fullyClosed ? 'disabled' : ''} style="display:flex;width:100%;text-align:left;margin:4px 0;gap:8px">
+      <span style="width:72px">${x.start ? esc(t12(x.start)) : ''}</span><span style="flex:1"><b>${esc(x.name)}</b>${names.filter(n => n !== 'You').length ? `<br><span class="who" style="margin:0">👥 ${esc(names.filter(n => n !== 'You').join(', '))}</span>` : ''}</span><span>${on ? '★' : '☆'}</span></button>`;
+  }).join('');
+  const dayTabs = days.length > 1 ? `<div class="chips">${days.map((x, i) => `<button class="chip ${x === d ? 'on' : ''}" data-festday="${i}">${esc(new Date(x + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }))}</button>`).join('')}</div>` : '';
+  return `<div class="down" id="step-fest"><h2>🎪 ${esc(o.title)}</h2>${head}${dayTabs}${rows}</div>`;
+}
+function bindShowPlan() {
+  app.querySelectorAll('[data-ride]').forEach(b => b.addEventListener('click', () => {
+    const mine = (rides || []).find(r => r.mine), role = b.dataset.ride;
+    setRide(mine && mine.role === role ? null : role, mine && mine.seats ? mine.seats : 3);
+  }));
+  app.querySelectorAll('[data-seats]').forEach(b => b.addEventListener('click', () => setRide('drive', Number(b.dataset.seats))));
+  app.querySelectorAll('[data-fest]').forEach(b => b.addEventListener('click', () => { festOpen = festOpen === b.dataset.fest ? null : b.dataset.fest; festDay = 0; render(); }));
+  app.querySelectorAll('[data-festday]').forEach(b => b.addEventListener('click', () => { festDay = Number(b.dataset.festday); render(); }));
+  app.querySelectorAll('[data-set]').forEach(b => b.addEventListener('click', () => toggleSet(b.dataset.set, b.dataset.setkey)));
+}
+async function setRide(role, seats) {
+  if (role && !(await askNameFirst())) return;
+  return once(async () => {
+    try { rides = await rpc('set_poll_ride', { p_code: code, p_voter_key: me, p_name: myName(), p_role: role, p_seats: seats }); render(); }
+    catch (e) { alert(/closed/.test(e.message) ? 'This plan has closed.' : /full/.test(e.message) ? 'This plan is full.' : 'Couldn’t save that. Try again.'); }
+  });
+}
+async function toggleSet(dealId, key) {
+  if (!(await askNameFirst())) return;
+  return once(async () => {
+    try { setRows = await rpc('toggle_poll_set', { p_code: code, p_voter_key: me, p_deal_id: dealId, p_set_key: key, p_name: myName() }) || []; render(); }
+    catch (e) { alert(/closed/.test(e.message) ? 'This plan has closed.' : 'Couldn’t save that. Try again.'); }
+  });
+}
 // The person who started it, or a co-organizer they picked (get_poll's is_organizer).
 const isOrg = () => !!(poll && (poll.is_organizer ?? poll.is_creator));
 // Lock it in: for a plan for each day, the day first (its stops stay, the other
@@ -2554,6 +2635,7 @@ async function load() {
   if (!addingTime && !typingIn()) render();
   loadInfo();
   loadBring();
+  loadShowPlan();
 }
 load();
 setInterval(load, 10000);
