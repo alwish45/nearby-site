@@ -35,6 +35,10 @@
   input[type=text] { width:100%; font:inherit; font-size:16px; padding:11px 12px; border:1.5px solid #e2ddd3; border-radius:12px; background:#fff; color:var(--ink); }
   .row { display:flex; gap:8px; align-items:center; }
   .row input { flex:1; min-width:0; }
+  .book { display:flex; gap:14px; align-items:flex-start; }
+  .book img, .book .nocover { width:84px; height:126px; border-radius:8px; object-fit:cover; flex-shrink:0; background:#efece5; }
+  .book .nocover { display:flex; align-items:center; justify-content:center; font-size:30px; }
+  .qs { margin:0; padding-left:20px; } .qs li { margin:6px 0; line-height:1.4; }
   .rsvp { display:flex; gap:8px; margin-top:12px; }
   button { font:inherit; cursor:pointer; }
   .rsvp button { flex:1; padding:12px 6px; border-radius:12px; border:1.5px solid #e2ddd3; background:#fff; font-weight:800; font-size:15px; color:var(--ink); min-height:48px; }
@@ -78,9 +82,20 @@ const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 const t12 = t => { if (!t) return ''; const [h, m] = t.split(':').map(Number); return `${((h + 11) % 12) + 1}${m ? ':' + String(m).padStart(2, '0') : ''}${h < 12 ? 'am' : 'pm'}`; };
 const mins = t => { const [h, m] = String(t).split(':').map(Number); return h * 60 + (m || 0); };
 const longDay = d => new Date(d + 'T12:00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
-const KINDS = { party: '🎉', birthday: '🎂', game_night: '🎲', dinner: '🍽️', shower: '🍼', graduation: '🎓', holiday: '🎄', meetup: '👋', other: '✨' };
+const KINDS = { party: '🎉', birthday: '🎂', game_night: '🎲', dinner: '🍽️', shower: '🍼', graduation: '🎓', holiday: '🎄', meetup: '👋', book_club: '📚', other: '✨' };
 const COVERS = { confetti: ['#FFE2CC', '#E8542A', '#14110D'], sunset: ['#FFD6A5', '#C2410C', '#14110D'], night: ['#1F2A44', '#7C8CF8', '#FAF8F4'], garden: ['#DFF3E4', '#1E7A46', '#14110D'],
   gold: ['#F7E7B4', '#A16207', '#14110D'], ocean: ['#D6ECFA', '#1D6FA5', '#14110D'], rose: ['#FBE0E6', '#BE185D', '#14110D'], mint: ['#DDF7F1', '#0F766E', '#14110D'] };
+// Book club covers come from Open Library by cover id.
+const coverUrl = (id, size) => (/^\d{1,12}$/.test(String(id || '')) ? `https://covers.openlibrary.org/b/id/${id}-${size}.jpg` : '');
+const bookLine = b => [b.author, b.year, b.pages ? b.pages + ' pages' : ''].filter(Boolean).join(' · ');
+function bookHtml(e) {
+  if (e.kind !== 'book_club' || !e.book) return '';
+  const b = e.book, img = coverUrl(b.cover_id, 'L');
+  return `<div class="card book" id="step-book">${img ? `<img src="${esc(img)}" alt="" onerror="this.remove()">` : '<div class="nocover">📚</div>'}
+    <div><div class="small" style="font-weight:800;letter-spacing:.04em">THE BOOK</div><h2 style="margin:2px 0 0">${esc(b.title)}</h2>
+    ${bookLine(b) ? `<p class="small">${esc(bookLine(b))}</p>` : ''}
+    ${e.reading ? `<p style="margin:8px 0 0"><b>📖 Read by then:</b> ${esc(e.reading)}</p>` : ''}</div></div>`;
+}
 const LINK = /(https?:\/\/|www\.|\b[a-z0-9-]+\.(com|net|org|io|co|ly|me|app|link|xyz)\b)/i;
 let myName = (() => { try { return localStorage.getItem('nearby.name') || ''; } catch { return ''; } })();
 const saveName = n => { myName = n; try { localStorage.setItem('nearby.name', n); } catch {} };
@@ -133,6 +148,7 @@ function render() {
     <p><b>📍 ${esc(place.business || place.title || '')}</b>${place.address ? '<br>' + esc(place.address) : ''}</p>
     ${e.address_hidden ? '<p class="small">The address is shared with guests who say they’re going.</p>' : ''}
     ${e.host ? `<p class="small">Hosted by ${esc(e.host)}</p>` : ''}
+    ${bookHtml(e)}
     ${e.note ? `<p class="note">${esc(e.note)}</p>` : ''}
     <div class="actions">
       ${!ev.cancelled ? `<a class="ghost" href="${esc(calLink(e))}" target="_blank" rel="noopener">🗓️ Add to calendar</a>` : ''}
@@ -149,7 +165,9 @@ function render() {
     <div class="card" id="step-guests"><h2>${h.heads || 0} going${h.maybe ? ` · ${h.maybe} maybe` : ''}${e.max_guests ? ` · ${Math.max(e.max_guests - (h.heads || 0), 0)} spots left` : ''}</h2>
       ${list ? list.map(g => `<div class="guest">${g.status === 'in' ? '🙌' : g.status === 'maybe' ? '🤔' : '😕'} ${esc(g.name)}${g.guests ? ' +' + Number(g.guests) : ''}${g.mine ? ' (you)' : ''}${host && g.answer ? `<div class="small">“${esc(g.answer)}”</div>` : ''}</div>`).join('') || '<p class="small">No answers yet.</p>'
         : '<p class="small">The host keeps the guest list private.</p>'}</div>
-    ${e.potluck ? `<div class="card" id="step-bring"><h2>🥘 Who’s bringing what</h2>
+    ${e.kind === 'book_club' && Array.isArray(e.questions) && e.questions.length ? `<div class="card" id="step-questions"><h2>💬 To talk about</h2>
+      <ol class="qs">${e.questions.map(q => `<li>${esc(q)}</li>`).join('')}</ol></div>` : ''}
+    ${e.potluck ? `<div class="card" id="step-bring"><h2>${e.kind === 'book_club' ? '🍪 Who’s bringing snacks' : '🥘 Who’s bringing what'}</h2>
       ${bring.map(b => `<div class="guest">${esc(b.mine ? 'You' : b.name)} · ${esc(b.item)}</div>`).join('') || '<p class="small">Nothing yet.</p>'}
       ${!ev.cancelled && !done ? `<div class="row" style="margin-top:10px"><input type="text" id="bring" maxlength="60" placeholder="I’m bringing…"><button class="btn" onclick="addBring()">Add</button></div>` : ''}</div>` : ''}
     ${done && !ev.cancelled ? `<div class="card"><h2>How was it? 📸</h2>${e.album ? `<a class="ghost" href="${esc(e.album)}" target="_blank" rel="noopener">Open the photo album</a>` : '<p class="small">The host can add a shared photo album.</p>'}</div>` : ''}
